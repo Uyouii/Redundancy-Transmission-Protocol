@@ -246,7 +246,7 @@ struct IRTPSEG
 	IUINT32 unack;				// unacknowledged, 当前未收到的序号: 即代表这个序号之前的包均收到
 	IUINT32 len;				// length, 数据长度
 	IUINT32 resend_timestamp;	// 重发的时间戳
-	IUINT32 resend_timeout;		// 超时重传的时间间隔
+	IUINT32 rto;				// 超时重传的时间间隔
 	IUINT32 fastack;			// ack跳过的次数，用于快速重传
 	IUINT32 xmit;				// 发送的次数
 	char data[1];
@@ -321,9 +321,32 @@ typedef struct IRTPCB irtpcb;
 #define IRTP_LOG_OUT_PROBE		1024
 #define IRTP_LOG_OUT_WINS		2048
 
-#ifdef __cplusplus	//如果是c++编译
+#ifdef __cplusplus	//if compiled by cpp
 extern "C" {
 #endif
+
+// create a new rtp control object, 'conv' must equal in two endpoint
+// from the same connection. 'user' will be passed to the output callback
+// output callback can be setup like this: 'rtp->output = my_udp_output'
+irtpcb* irtp_create(IUINT32 conv, void *user);
+
+// set maximum window size: sndwnd=32, rcvwnd=32 by default
+int irtp_wndsize(irtpcb *rtp, int sndwnd, int rcvwnd);
+
+// fastest: irtp_nodelay(rtp, 1, 20, 2, 1)
+// nodelay: 0:disable(default), 1:enable
+// interval: internal update timer interval in millisec, default is 100ms 
+// resend: 0:disable fast resend(default), 1:enable fast resend
+// nc: 0:normal congestion control(default), 1:disable congestion control
+int irtp_nodelay(irtpcb *rtp, int nodelay, int interval, int resend, int nc);
+
+// update state (call it repeatedly, every 10ms-100ms), or you can ask 
+// irtp_check when to call it again (without irtp_input/_send calling).
+// 'current' - current timestamp in millisec. 
+void irtp_update(irtpcb *kcp, IUINT32 current);
+
+// flush pending data
+void irtp_flush(irtpcb *kcp);
 
 
 
