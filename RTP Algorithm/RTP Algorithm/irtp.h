@@ -1,6 +1,10 @@
 ﻿#ifndef _IRTP_H_
 #define _IRTP_H_
 
+#include <stddef.h>
+#include <stdlib.h>
+#include <assert.h>
+
 //=====================================================================
 // 32BIT INTEGER DEFINITION 
 //=====================================================================
@@ -249,7 +253,12 @@ struct IRTPSEG
 	IUINT32 rto;				// 超时重传的时间间隔
 	IUINT32 fastack;			// ack跳过的次数，用于快速重传
 	IUINT32 xmit;				// 发送的次数
-	char data[1];
+	char data[1];				// 用于标记segment数据的起始位置
+};
+
+struct PacketCache {
+	char* data;
+	IUINT32 len;
 };
 
 //---------------------------------------------------------------------
@@ -272,7 +281,7 @@ struct IRTPCB {
 
 	//sen_wnd：发送窗口大小，rcv_wnd：接收窗口大小，
 	//remote_wnd：远端接收窗口大小，congestion_wnd：拥塞窗口大小，
-	//probe	探查变量，IKCP_ASK_TELL表示告知远端窗口大小。IKCP_ASK_SEND表示请求远端告知窗口大小。
+	//probe	探查变量，IRTP_ASK_TELL表示告知远端窗口大小。IRTP_ASK_SEND表示请求远端告知窗口大小。
 	IUINT32 snd_wnd, rcv_wnd, remote_wnd, congestion_wnd, probe;
 
 	//currunt：当前的时间戳，interval：内部flush刷新间隔，flush_timestamp：下次flush刷新时间戳
@@ -281,7 +290,7 @@ struct IRTPCB {
 	IUINT32 nrcv_que, nsnd_que;
 
 	//nodelay：是否启动无延迟模式，
-	//update：是否调用过update函数的标识(kcp需要上层通过不断的ikcp_update和ikcp_check来驱动kcp的收发过程)
+	//update：是否调用过update函数的标识(rtp需要上层通过不断的irtp_update和irtp_check来驱动rtp的收发过程)
 	IUINT32 nodelay, updated;
 
 	//probe_timestamp：下次探查窗口的时间戳，probe_wait：探查窗口需要等待的时间
@@ -294,16 +303,20 @@ struct IRTPCB {
 	struct IQUEUEHEAD rcv_queue;	//接收消息的队列
 	struct IQUEUEHEAD snd_buf;		//发送消息的缓存
 	struct IQUEUEHEAD rcv_buf;		//接收消息的缓存
+	
 	IUINT32 *acklist;				//待发送的ack的列表
 	IUINT32 ackcount;				//ack数量
 	IUINT32 ackblock;				//acklist的大小
+
+	struct PacketCache *old_packet;		
+
 	void *user;
 	char *buffer;					//储存消息字节流的内存
 	int fastresend;					//触发快速重传的重复ack个数
 	int nocwnd, stream;				//nocwnd：取消拥塞控制，stream：是否采用流传输模式
 	int logmask;
-	int(*output)(const char *buf, int len, struct IRTPCB *kcp, void *user);	//发送消息的回调函数
-	void(*writelog)(const char *log, struct IRTPCB *kcp, void *user);
+	int(*output)(const char *buf, int len, struct IRTPCB *rtp, void *user);	//发送消息的回调函数
+	void(*writelog)(const char *log, struct IRTPCB *rtp, void *user);
 };
 
 typedef struct IRTPCB irtpcb;
@@ -343,10 +356,56 @@ int irtp_nodelay(irtpcb *rtp, int nodelay, int interval, int resend, int nc);
 // update state (call it repeatedly, every 10ms-100ms), or you can ask 
 // irtp_check when to call it again (without irtp_input/_send calling).
 // 'current' - current timestamp in millisec. 
-void irtp_update(irtpcb *kcp, IUINT32 current);
+void irtp_update(irtpcb *rtp, IUINT32 current);
 
 // flush pending data
-void irtp_flush(irtpcb *kcp);
+void irtp_flush(irtpcb *rtp);
+
+// user/upper level send, returns below zero for error
+int irtp_send(irtpcb *rtp, const char *buffer, int len);
+
+// when you received a low level packet (eg. UDP packet), call it
+int irtp_input(irtpcb *rtp, const char *data, long size);
+
+// user/upper level recv: returns size, returns below zero for EAGAIN
+int irtp_recv(irtpcb *rtp, char *buffer, int len);
+
+// release rtp control object
+void irtp_release(irtpcb *rtp);
+
+// set output callback, which will be invoked by rtp
+void irtp_setoutput(irtpcb *rtp, int(*output)(const char *buf, int len,
+	irtpcb *rtp, void *user));
+
+
+// Determine when should you invoke irtp_update:
+// returns when you should invoke irtp_update in millisec, if there 
+// is no irtp_input/_send calling. you can call irtp_update in that
+// time, instead of call update repeatly.
+// Important to reduce unnacessary irtp_update invoking. use it to 
+// schedule irtp_update (eg. implementing an epoll-like mechanism, 
+// or optimize irtp_update when handling massive rtp connections)
+IUINT32 irtp_check(const irtpcb *rtp, IUINT32 current);
+
+// check the size of next message in the recv queue
+int irtp_peeksize(const irtpcb *rtp);
+
+// change MTU size, default is 1400
+int irtp_setmtu(irtpcb *rtp, int mtu);
+
+// read conv
+IUINT32 irtp_getconv(const void *ptr);
+
+// setup allocator
+void irtp_allocator(void* (*new_malloc)(size_t), void(*new_free)(void*));
+
+void irtp_log(irtpcb *kcp, int mask, const char *fmt, ...);
+
+// get how many packet is waiting to be sent
+int irtp_waitsnd(const irtpcb *kcp);
+
+
+
 
 
 
