@@ -256,10 +256,11 @@ struct IRTPSEG
 	char data[1];				// 用于标记segment数据的起始位置
 };
 
-struct PacketCache {
+typedef struct PACKETCACHE {
 	char* data;
 	IUINT32 len;
-};
+} PacketCache;
+
 
 //---------------------------------------------------------------------
 // IRTPCB
@@ -308,7 +309,11 @@ struct IRTPCB {
 	IUINT32 ackcount;				//ack数量
 	IUINT32 ackblock;				//acklist的大小
 
-	struct PacketCache *old_packet;		
+	int redundancy_num;
+	PacketCache *old_send_data;		//用于缓存之前发送内容的buffer
+	size_t old_send_data_used;
+	size_t r_buffer_size;
+	size_t now_send_data_num;		// 当前是冗余缓冲的哪个buffer
 
 	void *user;
 	char *buffer;					//储存消息字节流的内存
@@ -404,9 +409,7 @@ void irtp_log(irtpcb *kcp, int mask, const char *fmt, ...);
 // get how many packet is waiting to be sent
 int irtp_waitsnd(const irtpcb *kcp);
 
-
-
-
+int irtp_set_redundancy(irtpcb *rtp, int redun);
 
 
 #ifdef __cplusplus

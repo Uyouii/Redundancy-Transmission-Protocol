@@ -33,6 +33,7 @@ const IUINT32 IRTP_THRESH_INIT = 2;
 const IUINT32 IRTP_THRESH_MIN = 2;
 const IUINT32 IRTP_PROBE_INIT = 7000;		// 7 secs to probe window size
 const IUINT32 IRTP_PROBE_LIMIT = 120000;	// up to 120 secs to probe window
+const IUINT32 IRTP_REDUN_MAX = 4;
 
 //---------------------------------------------------------------------
 // encode / decode
@@ -310,6 +311,12 @@ irtpcb* irtp_create(IUINT32 conv, void *user) {
 	rtp->output = NULL;
 	rtp->writelog = NULL;
 
+	rtp->redundancy_num = 0;
+	rtp->old_send_data = NULL;
+	rtp->r_buffer_size = 0;
+	rtp->now_send_data_num = 0;
+	rtp->old_send_data_used = 0;
+
 	return rtp;
 }
 
@@ -500,7 +507,13 @@ void irtp_flush(irtpcb *rtp) {
 	}
 
 	rtp->probe = 0;
-
+	// flush remaining data in the buffer
+	size = (int)(ptr - buffer);
+	if (size > 0) {
+		irtp_output(rtp, buffer, size);
+		ptr = buffer;
+	}
+	
 	// calculate window size，取发送窗口和远端窗口的最小值
 	cwnd = _imin_(rtp->snd_wnd, rtp->remote_wnd);
 	// 如果不取消拥塞控制
@@ -533,6 +546,12 @@ void irtp_flush(irtpcb *rtp) {
 	// calculate resent
 	resent = (rtp->fastresend > 0) ? (IUINT32)rtp->fastresend : 0xffffffff;
 	rtomin = (rtp->nodelay == 0) ? (rtp->rx_rto >> 3) : 0;
+	
+	
+	if (rtp->redundancy_num > 0) {
+		buffer = rtp->old_send_data[rtp->now_send_data_num].data;
+		ptr = buffer;
+	}
 
 	// flush data segments
 	for (p = rtp->snd_buf.next; p != &rtp->snd_buf; p = p->next) {
@@ -575,9 +594,38 @@ void irtp_flush(irtpcb *rtp) {
 			size = (int)(ptr - buffer);
 			need = IRTP_OVERHEAD + segment->len;
 
-			if (size + need > (int)rtp->mtu) {
-				irtp_output(rtp, buffer, size);
-				ptr = buffer;
+			// 如果开启冗余传输
+			if (rtp->redundancy_num > 0) {
+				if (size + need > (int)rtp->r_buffer_size) {
+					char* send_ptr = rtp->buffer;
+					rtp->old_send_data[rtp->now_send_data_num].len = size;
+					for (int i = rtp->old_send_data_used - 1; i >= 0; i--) {
+						int index = (rtp->now_send_data_num - i + rtp->redundancy_num) % rtp->redundancy_num;
+						memcpy(send_ptr, rtp->old_send_data[index].data, rtp->old_send_data[index].len);
+						send_ptr += rtp->old_send_data[index].len;
+					}
+
+					irtp_output(rtp, rtp->buffer, send_ptr - rtp->buffer);
+					
+					if (rtp->old_send_data_used < rtp->redundancy_num) {
+						rtp->old_send_data_used++;
+						rtp->now_send_data_num++;
+						rtp->old_send_data[rtp->now_send_data_num].len = 0;
+					}
+					else {
+						rtp->now_send_data_num = (rtp->now_send_data_num + 1) % rtp->redundancy_num;
+						rtp->old_send_data[rtp->now_send_data_num].len = 0;
+					}
+
+					buffer = rtp->old_send_data[rtp->now_send_data_num].data;
+					ptr = buffer;
+				}
+			}
+			else  {
+				if (size + need > (int)rtp->mtu) {
+					irtp_output(rtp, buffer, size);
+					ptr = buffer;
+				}
 			}
 
 			ptr = irtp_encode_seg(ptr, segment);
@@ -596,7 +644,29 @@ void irtp_flush(irtpcb *rtp) {
 	// flash remain segments
 	size = (int)(ptr - buffer);
 	if (size > 0) {
-		irtp_output(rtp, buffer, size);
+		if (rtp->redundancy_num > 0) {
+			char* send_ptr = rtp->buffer;
+			rtp->old_send_data[rtp->now_send_data_num].len = size;
+			for (int i = rtp->old_send_data_used - 1; i >= 0; i--) {
+				int index = (rtp->now_send_data_num - i + rtp->redundancy_num) % rtp->redundancy_num;
+				memcpy(send_ptr, rtp->old_send_data[index].data, rtp->old_send_data[index].len);
+				send_ptr += rtp->old_send_data[index].len;
+			}
+
+			irtp_output(rtp, rtp->buffer, send_ptr - rtp->buffer);
+
+			if (rtp->old_send_data_used < rtp->redundancy_num) {
+				rtp->old_send_data_used++;
+				rtp->now_send_data_num++;
+			}
+			else {
+				rtp->now_send_data_num = (rtp->now_send_data_num + 1) % rtp->redundancy_num;
+			}
+			rtp->old_send_data[rtp->now_send_data_num].len = 0;
+		}
+		else {
+			irtp_output(rtp, buffer, size);
+		}
 	}
 
 	// update ssthresh
@@ -1247,10 +1317,48 @@ int irtp_waitsnd(const irtpcb *rtp) {
 	return rtp->nsnd_buf + rtp->nsnd_que;
 }
 
-
 // read conv
 IUINT32 irtp_getconv(const void *ptr) {
 	IUINT32 conv;
 	irtp_decode32u((const char*)ptr, &conv);
 	return conv;
+}
+
+// update the size of the old_send_data buffer
+int irtp_set_redundancy(irtpcb *rtp, int redun) {
+	if (redun < 0)
+		return -1;	// wrong number of redundancy number
+	if (redun <= 1) redun = 0;
+	if (redun >= IRTP_REDUN_MAX) redun = IRTP_REDUN_MAX;
+	if (redun != rtp->redundancy_num) {
+		if (redun > 0) {
+			for (int i = 0; i < rtp->redundancy_num; i++) {
+				irtp_free(rtp->old_send_data[i].data);
+			}
+			irtp_free(rtp->old_send_data);
+
+			rtp->redundancy_num = redun;
+			rtp->r_buffer_size = rtp->mtu / 3;
+
+			rtp->old_send_data = irtp_malloc(sizeof(PacketCache) * rtp->redundancy_num);
+			for (int i = 0; i < rtp->redundancy_num; i++) {
+				rtp->old_send_data[i].data = irtp_malloc(rtp->r_buffer_size);
+				rtp->old_send_data[i].len = 0;
+			}
+			rtp->now_send_data_num = 0;
+			rtp->old_send_data_used = 1; // 设置初始使用的窗口的个数
+		}
+		else if (redun == 0) {
+			for (int i = 0; i < rtp->redundancy_num; i++) {
+				irtp_free(rtp->old_send_data[i].data);
+			}
+			irtp_free(rtp->old_send_data);
+			rtp->old_send_data = NULL;
+			rtp->redundancy_num = 0;
+			rtp->now_send_data_num = 0;
+			rtp->r_buffer_size = 0;
+			rtp->old_send_data_used = 0;
+		}
+	}
+	return 0;
 }

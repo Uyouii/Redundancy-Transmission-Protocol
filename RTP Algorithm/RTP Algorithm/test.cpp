@@ -55,6 +55,10 @@ void test(int mode)
 	irtp_wndsize(rtp1, 128, 128);
 	irtp_wndsize(rtp2, 128, 128);
 
+	// 设置冗余个数
+	irtp_set_redundancy(rtp1, 3);
+	irtp_set_redundancy(rtp2, 3);
+
 	// 判断测试用例的模式
 	if (mode == 0) {
 		// 默认模式
@@ -171,7 +175,7 @@ void test(int mode)
 int main()
 {
 	//test(0);	// 默认模式，类似 TCP：正常模式，无快速重传，常规流控
-	//test(1);	// 普通模式，关闭流控等
+	test(1);	// 普通模式，关闭流控等
 	test(2);	// 快速模式，所有开关都打开，且关闭流控
 	return 0;
 }
