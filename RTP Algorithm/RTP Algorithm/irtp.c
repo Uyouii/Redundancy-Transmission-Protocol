@@ -237,6 +237,14 @@ void irtp_release(irtpcb *rtp) {
 			irtp_free(rtp->acklist);
 		}
 
+		// release redundancy_buffer
+		if (rtp->redundancy_num > 0) {
+			for (int i = 0; i < rtp->redundancy_num; i++) {
+				irtp_free(rtp->old_send_data[i].data);
+			}
+			irtp_free(rtp->old_send_data);
+		}
+
 		rtp->nrcv_buf = 0;
 		rtp->nsnd_buf = 0;
 		rtp->nrcv_que = 0;
@@ -418,6 +426,30 @@ static int irtp_wnd_unused(const irtpcb *rtp) {
 	return 0;
 }
 
+char *redundancy_send(irtpcb *rtp, size_t size) {
+	char* send_ptr = rtp->buffer;
+	rtp->old_send_data[rtp->now_send_data_num].len = size;
+	for (int i = rtp->old_send_data_used - 1; i >= 0; i--) {
+		int index = (rtp->now_send_data_num - i + rtp->redundancy_num) % rtp->redundancy_num;
+		memcpy(send_ptr, rtp->old_send_data[index].data, rtp->old_send_data[index].len);
+		send_ptr += rtp->old_send_data[index].len;
+	}
+
+	irtp_output(rtp, rtp->buffer, send_ptr - rtp->buffer);
+
+	if (rtp->old_send_data_used < rtp->redundancy_num) {
+		rtp->old_send_data_used++;
+		rtp->now_send_data_num++;
+	}
+	else {
+		rtp->now_send_data_num = (rtp->now_send_data_num + 1) % rtp->redundancy_num;
+		
+	}
+	rtp->old_send_data[rtp->now_send_data_num].len = 0;
+
+	return rtp->old_send_data[rtp->now_send_data_num].data;
+}
+
 //---------------------------------------------------------------------
 // irtp_flush
 //---------------------------------------------------------------------
@@ -597,27 +629,7 @@ void irtp_flush(irtpcb *rtp) {
 			// 如果开启冗余传输
 			if (rtp->redundancy_num > 0) {
 				if (size + need > (int)rtp->r_buffer_size) {
-					char* send_ptr = rtp->buffer;
-					rtp->old_send_data[rtp->now_send_data_num].len = size;
-					for (int i = rtp->old_send_data_used - 1; i >= 0; i--) {
-						int index = (rtp->now_send_data_num - i + rtp->redundancy_num) % rtp->redundancy_num;
-						memcpy(send_ptr, rtp->old_send_data[index].data, rtp->old_send_data[index].len);
-						send_ptr += rtp->old_send_data[index].len;
-					}
-
-					irtp_output(rtp, rtp->buffer, send_ptr - rtp->buffer);
-					
-					if (rtp->old_send_data_used < rtp->redundancy_num) {
-						rtp->old_send_data_used++;
-						rtp->now_send_data_num++;
-						rtp->old_send_data[rtp->now_send_data_num].len = 0;
-					}
-					else {
-						rtp->now_send_data_num = (rtp->now_send_data_num + 1) % rtp->redundancy_num;
-						rtp->old_send_data[rtp->now_send_data_num].len = 0;
-					}
-
-					buffer = rtp->old_send_data[rtp->now_send_data_num].data;
+					buffer = redundancy_send(rtp, size);
 					ptr = buffer;
 				}
 			}
@@ -644,25 +656,9 @@ void irtp_flush(irtpcb *rtp) {
 	// flash remain segments
 	size = (int)(ptr - buffer);
 	if (size > 0) {
+		// 如果开启冗余传输
 		if (rtp->redundancy_num > 0) {
-			char* send_ptr = rtp->buffer;
-			rtp->old_send_data[rtp->now_send_data_num].len = size;
-			for (int i = rtp->old_send_data_used - 1; i >= 0; i--) {
-				int index = (rtp->now_send_data_num - i + rtp->redundancy_num) % rtp->redundancy_num;
-				memcpy(send_ptr, rtp->old_send_data[index].data, rtp->old_send_data[index].len);
-				send_ptr += rtp->old_send_data[index].len;
-			}
-
-			irtp_output(rtp, rtp->buffer, send_ptr - rtp->buffer);
-
-			if (rtp->old_send_data_used < rtp->redundancy_num) {
-				rtp->old_send_data_used++;
-				rtp->now_send_data_num++;
-			}
-			else {
-				rtp->now_send_data_num = (rtp->now_send_data_num + 1) % rtp->redundancy_num;
-			}
-			rtp->old_send_data[rtp->now_send_data_num].len = 0;
+			redundancy_send(rtp, size);
 		}
 		else {
 			irtp_output(rtp, buffer, size);
@@ -1302,6 +1298,21 @@ int irtp_setmtu(irtpcb *rtp, int mtu) {
 	rtp->mss = rtp->mtu - IRTP_OVERHEAD;
 	irtp_free(rtp->buffer);
 	rtp->buffer = buffer;
+
+	// 初始化冗余buffer设置
+	if (rtp->redundancy_num > 0) {
+		for (int i = 0; i < rtp->redundancy_num; i++) {
+			irtp_free(rtp->old_send_data[i].data);
+		}
+		rtp->r_buffer_size = rtp->mtu / rtp->redundancy_num;
+		for (int i = 0; i < rtp->redundancy_num; i++) {
+			rtp->old_send_data[i].data = irtp_malloc(rtp->r_buffer_size);
+			rtp->old_send_data[i].len = 0;
+		}
+		rtp->now_send_data_num = 0;
+		rtp->old_send_data_used = 1; // 设置初始使用的窗口的个数
+	}
+
 	return 0;
 }
 
@@ -1338,7 +1349,7 @@ int irtp_set_redundancy(irtpcb *rtp, int redun) {
 			irtp_free(rtp->old_send_data);
 
 			rtp->redundancy_num = redun;
-			rtp->r_buffer_size = rtp->mtu / 3;
+			rtp->r_buffer_size = rtp->mtu / rtp->redundancy_num;
 
 			rtp->old_send_data = irtp_malloc(sizeof(PacketCache) * rtp->redundancy_num);
 			for (int i = 0; i < rtp->redundancy_num; i++) {

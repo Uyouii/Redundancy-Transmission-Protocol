@@ -56,8 +56,8 @@ void test(int mode)
 	irtp_wndsize(rtp2, 128, 128);
 
 	// 设置冗余个数
-	irtp_set_redundancy(rtp1, 3);
-	irtp_set_redundancy(rtp2, 3);
+	irtp_set_redundancy(rtp1, 2);
+	irtp_set_redundancy(rtp2, 2);
 
 	// 判断测试用例的模式
 	if (mode == 0) {
