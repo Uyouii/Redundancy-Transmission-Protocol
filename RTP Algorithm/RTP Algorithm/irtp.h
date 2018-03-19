@@ -309,7 +309,7 @@ struct IRTPCB {
 	IUINT32 ackcount;				//ack数量
 	IUINT32 ackblock;				//acklist的大小
 
-	int redundancy_num;
+	size_t redundancy_num;
 	PacketCache *old_send_data;		//用于缓存之前发送内容的buffer
 	size_t old_send_data_used;
 	size_t r_buffer_size;

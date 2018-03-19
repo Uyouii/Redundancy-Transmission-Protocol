@@ -56,8 +56,8 @@ void test(int mode)
 	irtp_wndsize(rtp2, 128, 128);
 
 	// 设置冗余个数
-	irtp_set_redundancy(rtp1, 2);
-	irtp_set_redundancy(rtp2, 2);
+	irtp_set_redundancy(rtp1, 3);
+	irtp_set_redundancy(rtp2, 3);
 
 	// 判断测试用例的模式
 	if (mode == 0) {
@@ -98,6 +98,7 @@ void test(int mode)
 		for (; current >= slap; slap += 20) {
 			((IUINT32*)buffer)[0] = index++;
 			((IUINT32*)buffer)[1] = current;
+			//memset((char*)buffer + 8, 'a', 492);
 
 			// 发送上层协议包
 			irtp_send(rtp1, buffer, 8);
@@ -121,7 +122,7 @@ void test(int mode)
 
 		// rtp2接收到任何包都返回回去
 		while (1) {
-			hr = irtp_recv(rtp2, buffer, 10);
+			hr = irtp_recv(rtp2, buffer, 8);
 			// 没有收到包就退出
 			if (hr < 0) break;
 			// 如果收到包就回射
@@ -130,11 +131,15 @@ void test(int mode)
 
 		// rtp1收到rtp2的回射数据
 		while (1) {
-			hr = irtp_recv(rtp1, buffer, 10);
+			hr = irtp_recv(rtp1, buffer, 8);
 			// 没有收到包就退出
 			if (hr < 0) break;
 			IUINT32 sn = *(IUINT32*)(buffer + 0);
 			IUINT32 ts = *(IUINT32*)(buffer + 4);
+			//for (int i = 8; i < 500; i++) {
+			//	printf("%c", buffer[i]);
+			//}
+			printf("\n");
 			IUINT32 rtt = current - ts;
 
 			if (sn != next) {
@@ -157,7 +162,7 @@ void test(int mode)
 #endif // DEBUG
 
 		}
-		if (next > 1000) break;
+		if (next > 500) break;
 	}
 
 	ts1 = iclock() - ts1;

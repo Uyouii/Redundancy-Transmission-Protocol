@@ -256,8 +256,6 @@ void irtp_release(irtpcb *rtp) {
 	}
 }
 
-
-
 //---------------------------------------------------------------------
 // create a new rtpcb
 //---------------------------------------------------------------------
@@ -576,10 +574,16 @@ void irtp_flush(irtpcb *rtp) {
 	}
 
 	// calculate resent
-	resent = (rtp->fastresend > 0) ? (IUINT32)rtp->fastresend : 0xffffffff;
+	if (rtp->fastresend > 0) {
+		if (rtp->redundancy_num > 0) {
+			resent = (IUINT32)(rtp->fastresend + rtp->redundancy_num);
+		}
+		else resent = (IUINT32)rtp->fastresend;
+	}
+	else resent = 0xffffffff;
 	rtomin = (rtp->nodelay == 0) ? (rtp->rx_rto >> 3) : 0;
 	
-	
+	// 如果设置了冗余传输，则将当前的buffer设置为冗余队列中的buffer
 	if (rtp->redundancy_num > 0) {
 		buffer = rtp->old_send_data[rtp->now_send_data_num].data;
 		ptr = buffer;
@@ -589,12 +593,14 @@ void irtp_flush(irtpcb *rtp) {
 	for (p = rtp->snd_buf.next; p != &rtp->snd_buf; p = p->next) {
 		IRTPSEG *segment = iqueue_entry(p, IRTPSEG, node);
 		int needsend = 0;
-		if (segment->xmit == 0) {
+		// 如果之前没有发送过，则直接发送
+		if (segment->xmit == 0) {	
 			needsend = 1;
 			segment->xmit++;
 			segment->rto = rtp->rx_rto;
 			segment->resend_timestamp = current + segment->rto + rtomin;
 		}
+		// 超时进行重传
 		else if (_itimediff(current, segment->resend_timestamp) >= 0) {
 			needsend = 1;
 			segment->xmit++;
@@ -690,7 +696,6 @@ void irtp_flush(irtpcb *rtp) {
 	}
 }
 
-
 //---------------------------------------------------------------------
 // user/upper level send, returns below zero for error
 // 把需要发送的buffer中的数据分片后放到queue中
@@ -703,13 +708,18 @@ int irtp_send(irtpcb *rtp, const char *buffer, int len) {
 	assert(rtp->mss > 0);
 	if (len < 0) return -1;
 
+	// 如果开启冗余传输，
+	IUINT32 send_mss = (rtp->redundancy_num > 0) ? (rtp->mtu) / rtp->redundancy_num - IRTP_OVERHEAD : rtp->mss;
+	if (send_mss <= 0)
+		return -2;	//冗余个数太多
+
 	// append to previous segment in streaming mode (if possible)
 	// 是否开启流模式
 	if (rtp->stream != 0) {
 		if (!iqueue_is_empty(&rtp->snd_queue)) {
 			IRTPSEG *old = iqueue_entry(rtp->snd_queue.prev, IRTPSEG, node);
-			if (old->len < rtp->mss) {
-				int capacity = rtp->mss - old->len;
+			if (old->len < send_mss) {
+				int capacity = send_mss - old->len;
 				int extend = (len < capacity) ? len : capacity;
 				seg = irtp_segment_new(rtp, old->len + extend);
 				assert(seg);
@@ -734,8 +744,8 @@ int irtp_send(irtpcb *rtp, const char *buffer, int len) {
 		}
 	}
 
-	if (len <= (int)rtp->mss) count = 1;
-	else count = (len + rtp->mss - 1) / rtp->mss;
+	if (len <= (int)send_mss) count = 1;
+	else count = (len + send_mss - 1) /send_mss;
 
 	if (count > 255) return -2;
 
@@ -743,7 +753,7 @@ int irtp_send(irtpcb *rtp, const char *buffer, int len) {
 
 	// fragment
 	for (i = 0; i < count; i++) {
-		int size = len >(int)rtp->mss ? (int)rtp->mss : len;
+		int size = len >(int)send_mss ? (int)send_mss : len;
 		seg = irtp_segment_new(rtp, size);
 		assert(seg);
 		if (seg == NULL) {
@@ -806,7 +816,7 @@ static void irtp_parse_una(irtpcb *rtp, IUINT32 una) {
 	}
 }
 
-//更新sed_una（下一个未确认的segment）
+//更新sed_unack（下一个未确认的segment）
 static void irtp_shrink_buf(irtpcb *rtp) {
 	struct IQUEUEHEAD *p = rtp->snd_buf.next;
 	if (p != &rtp->snd_buf) {
@@ -866,7 +876,6 @@ static void irtp_parse_fastack(irtpcb *rtp, IUINT32 sn) {
 // 将收到的segment放到rev_buf中
 // 如果rev_queue的大小小于rec_wnd的大小，则将rev_buf中连续的segment push到rev_que中
 //---------------------------------------------------------------------
-
 void irtp_parse_data(irtpcb *rtp, IRTPSEG *newseg) {
 	struct IQUEUEHEAD *p, *prev;
 	IUINT32 sn = newseg->seq_num;
@@ -1015,10 +1024,11 @@ int irtp_input(irtpcb *rtp, const char *data, long size) {
 			return -3;							//-3 指令错误
 
 		rtp->remote_wnd = wnd;
-		irtp_parse_una(rtp, una);
-		irtp_shrink_buf(rtp);
+		irtp_parse_una(rtp, una);	//将snd_buf中的una之前的seg清空
+		irtp_shrink_buf(rtp);		//更新sed_unack（下一个未确认的segment）
 
 		if (cmd == IRTP_CMD_ACK) {
+			// 如果收到包的时间比预计的晚
 			if (_itimediff(rtp->current, ts) >= 0) {
 				irtp_update_ack(rtp, _itimediff(rtp->current, ts));
 			}
@@ -1047,6 +1057,7 @@ int irtp_input(irtpcb *rtp, const char *data, long size) {
 			}
 			if (_itimediff(sn, rtp->rcv_next + rtp->rcv_wnd) < 0) {
 				irtp_ack_push(rtp, sn, ts);
+				// 如果数据报之前没有收到过
 				if (_itimediff(sn, rtp->rcv_next) >= 0) {
 					seg = irtp_segment_new(rtp, len);
 					seg->conv = conv;
@@ -1061,7 +1072,6 @@ int irtp_input(irtpcb *rtp, const char *data, long size) {
 					if (len > 0) {
 						memcpy(seg->data, data, len);
 					}
-
 					irtp_parse_data(rtp, seg);
 				}
 			}
@@ -1116,7 +1126,6 @@ int irtp_input(irtpcb *rtp, const char *data, long size) {
 			}
 		}
 	}
-
 	return 0;
 }
 
