@@ -19,8 +19,7 @@
 LatencySimulator *vnet;
 
 // 模拟网络：模拟发送一个 udp包
-int udp_output(const char *buf, int len, irtpcb *rtp, void *user)
-{
+int udp_output(const char *buf, int len, irtpcb *rtp, void *user) {
 	union { int id; void *ptr; } parameter;
 	parameter.ptr = user;
 	vnet->send(parameter.id, buf, len);
@@ -28,10 +27,9 @@ int udp_output(const char *buf, int len, irtpcb *rtp, void *user)
 }
 
 // 测试用例
-void test(int mode)
-{
+void test(int mode) {
 	// 创建模拟网络：丢包率10%，Rtt 60ms~125ms
-	vnet = new LatencySimulator(10, 60, 125);
+	vnet = new LatencySimulator(5, 60, 125);
 
 	// 创建两个端点的 rtp对象，第一个参数 conv是会话编号，同一个会话需要相同
 	// 最后一个是 user参数，用来传递标识
@@ -70,7 +68,7 @@ void test(int mode)
 		irtp_nodelay(rtp1, 0, 10, 0, 1);
 		irtp_nodelay(rtp2, 0, 10, 0, 1);
 	}
-	else {
+	else if(mode == 2){
 		// 启动快速模式
 		// 第二个参数 nodelay-启用以后若干常规加速将启动
 		// 第三个参数 interval为内部处理时钟，默认设置为 10ms
@@ -78,6 +76,12 @@ void test(int mode)
 		// 第五个参数 为是否禁用常规流控，这里禁止
 		irtp_nodelay(rtp1, 1, 10, 2, 1);
 		irtp_nodelay(rtp2, 1, 10, 2, 1);
+		rtp1->rx_minrto = 10;
+		rtp1->fastresend = 2;
+	}
+	else if (mode == 3) {
+		irtp_nodelay(rtp1, 0, 10, 2, 0);
+		irtp_nodelay(rtp2, 0, 10, 2, 0);
 		rtp1->rx_minrto = 10;
 		rtp1->fastresend = 2;
 	}
@@ -122,7 +126,7 @@ void test(int mode)
 
 		// rtp2接收到任何包都返回回去
 		while (1) {
-			hr = irtp_recv(rtp2, buffer, 8);
+			hr = irtp_recv(rtp2, buffer, 10);
 			// 没有收到包就退出
 			if (hr < 0) break;
 			// 如果收到包就回射
@@ -131,7 +135,7 @@ void test(int mode)
 
 		// rtp1收到rtp2的回射数据
 		while (1) {
-			hr = irtp_recv(rtp1, buffer, 8);
+			hr = irtp_recv(rtp1, buffer, 10);
 			// 没有收到包就退出
 			if (hr < 0) break;
 			IUINT32 sn = *(IUINT32*)(buffer + 0);
@@ -139,7 +143,6 @@ void test(int mode)
 			//for (int i = 8; i < 500; i++) {
 			//	printf("%c", buffer[i]);
 			//}
-			printf("\n");
 			IUINT32 rtt = current - ts;
 
 			if (sn != next) {
@@ -156,11 +159,8 @@ void test(int mode)
 			printf("[RECV] mode=%d sn=%d rtt=%d\n", mode, (int)sn, (int)rtt);
 			printf("rtp1 cwnd: %d rtp2 cwnd: %d\n", rtp1->congestion_wnd, rtp2->congestion_wnd);
 			printf("rtp1 ssthresh: %d rtp2 ssthresh: %d \n", rtp1->ssthresh, rtp2->ssthresh);
-#ifdef TEST
-
-			printf("rtp1 cwnd: %d\n", rtp1->cwnd);
-#endif // DEBUG
-
+			//printf("rtp1 wait: %d rtp2 wait: %d \n", irtp_waitsnd(rtp1), irtp_waitsnd(rtp2));
+			printf("\n");
 		}
 		if (next > 500) break;
 	}
@@ -170,18 +170,18 @@ void test(int mode)
 	irtp_release(rtp1);
 	irtp_release(rtp2);
 
-	const char *names[3] = { "default", "normal", "fast" };
+	const char *names[4] = { "default", "normal", "fast", "cwnd_fast" };
 	printf("%s mode result (%dms):\n", names[mode], (int)ts1);
 	printf("avgrtt=%d maxrtt=%d tx=%d\n", (int)(sumrtt / count), (int)maxrtt, (int)vnet->tx1);
 	printf("press enter to next ...\n");
 	char ch; scanf("%c", &ch);
 }
 
-int main()
-{
+int main() {
 	//test(0);	// 默认模式，类似 TCP：正常模式，无快速重传，常规流控
-	test(1);	// 普通模式，关闭流控等
+	//test(1);	// 普通模式，关闭流控等
 	test(2);	// 快速模式，所有开关都打开，且关闭流控
+	//test(3);
 	return 0;
 }
 

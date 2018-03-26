@@ -1,11 +1,9 @@
-﻿
-#include "irtp.h"
-
-#include <stddef.h>
+﻿#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include "irtp.h"
 
 //=====================================================================
 // RTP BASIC
@@ -151,30 +149,10 @@ static void irtp_free(void *ptr) {
 	}
 }
 
-// check log mask
-static int irtp_canlog(const irtpcb *rtp, int mask) {
-	if ((mask & rtp->logmask) == 0 || rtp->writelog == NULL) return 0;
-	return 1;
-}
-
-// write log
-void irtp_log(irtpcb *rtp, int mask, const char *fmt, ...) {
-	char buffer[1024];
-	va_list argptr;
-	if ((mask & rtp->logmask) == 0 || rtp->writelog == 0) return;
-	va_start(argptr, fmt);
-	vsprintf(buffer, fmt, argptr);
-	va_end(argptr);
-	rtp->writelog(buffer, rtp, rtp->user);
-}
-
 // output segment
 static int irtp_output(irtpcb *rtp, const void *data, int size) {
 	assert(rtp);
 	assert(rtp->output);
-	if (irtp_canlog(rtp, IRTP_LOG_OUTPUT)) {
-		irtp_log(rtp, IRTP_LOG_OUTPUT, "[RO] %ld bytes", (long)size);
-	}
 	if (size == 0) return 0;
 	return rtp->output((const char*)data, size, rtp, rtp->user);
 }
@@ -187,20 +165,6 @@ static IRTPSEG* irtp_segment_new(irtpcb *rtp, int size) {
 // delete a segment
 static void irtp_segment_delete(irtpcb *rtp, IRTPSEG *seg) {
 	irtp_free(seg);
-}
-
-// output queue
-void irtp_qprint(const char *name, const struct IQUEUEHEAD *head) {
-#if 0
-	const struct IQUEUEHEAD *p;
-	printf("<%s>: [", name);
-	for (p = head->next; p != head; p = p->next) {
-		const IKCPSEG *seg = iqueue_entry(p, const IKCPSEG, node);
-		printf("(%lu %d)", (unsigned long)seg->sn, (int)(seg->ts % 10000));
-		if (p->next != head) printf(",");
-	}
-	printf("]\n");
-#endif
 }
 
 //---------------------------------------------------------------------
@@ -308,14 +272,12 @@ irtpcb* irtp_create(IUINT32 conv, void *user) {
 	rtp->flush_timestamp = IRTP_INTERVAL;
 	rtp->nodelay = 0;
 	rtp->updated = 0;
-	rtp->logmask = 0;
 	rtp->ssthresh = IRTP_THRESH_INIT;
 	rtp->fastresend = 0;
 	rtp->nocwnd = 0;
 	rtp->xmit = 0;
 	rtp->dead_link = IRTP_DEADLINK;
 	rtp->output = NULL;
-	rtp->writelog = NULL;
 
 	rtp->redundancy_num = 0;
 	rtp->old_send_data = NULL;
@@ -441,7 +403,6 @@ char *redundancy_send(irtpcb *rtp, size_t size) {
 	}
 	else {
 		rtp->now_send_data_num = (rtp->now_send_data_num + 1) % rtp->redundancy_num;
-		
 	}
 	rtp->old_send_data[rtp->now_send_data_num].len = 0;
 
@@ -711,7 +672,7 @@ int irtp_send(irtpcb *rtp, const char *buffer, int len) {
 	// 如果开启冗余传输，
 	IUINT32 send_mss = (rtp->redundancy_num > 0) ? (rtp->mtu) / rtp->redundancy_num - IRTP_OVERHEAD : rtp->mss;
 	if (send_mss <= 0)
-		return -2;	//冗余个数太多
+		return -3;	//冗余个数太多
 
 	// append to previous segment in streaming mode (if possible)
 	// 是否开启流模式
@@ -747,7 +708,7 @@ int irtp_send(irtpcb *rtp, const char *buffer, int len) {
 	if (len <= (int)send_mss) count = 1;
 	else count = (len + send_mss - 1) /send_mss;
 
-	if (count > 255) return -2;
+	if (count > 255) return -2;	//发送数据过大
 
 	if (count == 0) count = 1;
 
@@ -908,11 +869,6 @@ void irtp_parse_data(irtpcb *rtp, IRTPSEG *newseg) {
 		irtp_segment_delete(rtp, newseg);
 	}
 
-#if 0
-	irtp_qprint("rcvbuf", &rtp->rcv_buf);
-	printf("rcv_nxt=%lu\n", rtp->rcv_nxt);
-#endif
-
 	// move available data from rcv_buf -> rcv_queue
 	while (!iqueue_is_empty(&rtp->rcv_buf)) {
 		IRTPSEG *seg = iqueue_entry(rtp->rcv_buf.next, IRTPSEG, node);
@@ -927,16 +883,6 @@ void irtp_parse_data(irtpcb *rtp, IRTPSEG *newseg) {
 			break;
 		}
 	}
-
-#if 0
-	irtp_qprint("queue", &rtp->rcv_queue);
-	printf("rcv_nxt=%lu\n", rtp->rcv_nxt);
-#endif
-
-#if 1
-	//	printf("snd(buf=%d, queue=%d)\n", rtp->nsnd_buf, rtp->nsnd_que);
-	//	printf("rcv(buf=%d, queue=%d)\n", rtp->nrcv_buf, rtp->nrcv_que);
-#endif
 }
 
 //---------------------------------------------------------------------
@@ -989,10 +935,6 @@ int irtp_input(irtpcb *rtp, const char *data, long size) {
 	IUINT32 maxack = 0;
 	int flag = 0;
 
-	if (irtp_canlog(rtp, IRTP_LOG_INPUT)) {
-		irtp_log(rtp, IRTP_LOG_INPUT, "[RI] %d bytes", size);
-	}
-
 	if (data == NULL || (int)size < (int)IRTP_OVERHEAD) return -1;
 
 	while (1) {
@@ -1043,18 +985,8 @@ int irtp_input(irtpcb *rtp, const char *data, long size) {
 					maxack = sn;
 				}
 			}
-			if (irtp_canlog(rtp, IRTP_LOG_IN_ACK)) {
-				irtp_log(rtp, IRTP_LOG_IN_DATA,
-					"input ack: sn=%lu rtt=%ld rto=%ld", sn,
-					(long)_itimediff(rtp->current, ts),
-					(long)rtp->rx_rto);
-			}
 		}
 		else if (cmd == IRTP_CMD_PUSH) {
-			if (irtp_canlog(rtp, IRTP_LOG_IN_DATA)) {
-				irtp_log(rtp, IRTP_LOG_IN_DATA,
-					"input psh: sn=%lu ts=%lu", sn, ts);
-			}
 			if (_itimediff(sn, rtp->rcv_next + rtp->rcv_wnd) < 0) {
 				irtp_ack_push(rtp, sn, ts);
 				// 如果数据报之前没有收到过
@@ -1080,16 +1012,9 @@ int irtp_input(irtpcb *rtp, const char *data, long size) {
 			// ready to send back IRTP_CMD_WINS in irtp_flush
 			// tell remote my window size
 			rtp->probe |= IRTP_ASK_TELL;
-			if (irtp_canlog(rtp, IRTP_LOG_IN_PROBE)) {
-				irtp_log(rtp, IRTP_LOG_IN_PROBE, "input probe");
-			}
 		}
 		else if (cmd == IRTP_CMD_WINS) {
 			// do nothing
-			if (irtp_canlog(rtp, IRTP_LOG_IN_WINS)) {
-				irtp_log(rtp, IRTP_LOG_IN_WINS,
-					"input wins: %lu", (IUINT32)(wnd));
-			}
 		}
 		else {
 			return -3;	//wrong instruction
@@ -1174,10 +1099,6 @@ int irtp_recv(irtpcb *rtp, char *buffer, int len) {
 
 	peeksize = irtp_peeksize(rtp);
 
-#ifdef TEST
-	printf("peeksize %d len %d\n", peeksize, len);
-#endif // DEBUG
-
 	if (peeksize < 0)
 		return -2;		// 所有的分段没有接收完
 
@@ -1200,10 +1121,6 @@ int irtp_recv(irtpcb *rtp, char *buffer, int len) {
 
 		len += seg->len;
 		fragment = seg->fragement;
-
-		if (irtp_canlog(rtp, IRTP_LOG_RECV)) {
-			irtp_log(rtp, IRTP_LOG_RECV, "recv sn=%lu", seg->seq_num);
-		}
 
 		if (ispeek == 0) {
 			iqueue_del(&seg->node);
@@ -1231,7 +1148,6 @@ int irtp_recv(irtpcb *rtp, char *buffer, int len) {
 			break;
 		}
 	}
-
 	// fast recover
 	if (rtp->nrcv_que < rtp->rcv_wnd && recover) {
 		// ready to send back IRTP_CMD_WINS in irtp_flush

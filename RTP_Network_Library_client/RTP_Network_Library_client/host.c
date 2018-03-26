@@ -1,0 +1,342 @@
+﻿#define MRTP_BUILDING_LIB 1
+#include <string.h>
+#include "mrtp.h"
+
+MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount, 
+	mrtp_uint32 incomingBandwidth, mrtp_uint32 outgoingBandwidth) {
+
+	MRtpHost * host;
+	MRtpPeer * currentPeer;
+
+	if (peerCount > MRTP_PROTOCOL_MAXIMUM_PEER_ID)
+		return NULL;
+
+	host = (MRtpHost *)mrtp_malloc(sizeof(MRtpHost));
+	if (host == NULL)
+		return NULL;
+	memset(host, 0, sizeof(MRtpHost));
+
+	host->peers = (MRtpPeer *)mrtp_malloc(peerCount * sizeof(MRtpPeer));
+	if (host->peers == NULL) {
+		mrtp_free(host);
+
+		return NULL;
+	}
+	memset(host->peers, 0, peerCount * sizeof(MRtpPeer));
+
+	host->socket = mrtp_socket_create(MRTP_SOCKET_TYPE_DATAGRAM);
+	if (host->socket == MRTP_SOCKET_NULL || (address != NULL && mrtp_socket_bind(host->socket, address) < 0)) {
+		if (host->socket != MRTP_SOCKET_NULL)
+			mrtp_socket_destroy(host->socket);
+
+		mrtp_free(host->peers);
+		mrtp_free(host);
+
+		return NULL;
+	}
+
+	mrtp_socket_set_option(host->socket, MRTP_SOCKOPT_NONBLOCK, 1);
+	mrtp_socket_set_option(host->socket, MRTP_SOCKOPT_BROADCAST, 1);
+	mrtp_socket_set_option(host->socket, MRTP_SOCKOPT_RCVBUF, MRTP_HOST_RECEIVE_BUFFER_SIZE);
+	mrtp_socket_set_option(host->socket, MRTP_SOCKOPT_SNDBUF, MRTP_HOST_SEND_BUFFER_SIZE);
+
+	if (address != NULL && mrtp_socket_get_address(host->socket, &host->address) < 0)
+		host->address = *address;
+
+	host->randomSeed = (mrtp_uint32)(size_t)host;
+	host->randomSeed += mrtp_host_random_seed();
+	host->randomSeed = (host->randomSeed << 16) | (host->randomSeed >> 16);
+	host->incomingBandwidth = incomingBandwidth;
+	host->outgoingBandwidth = outgoingBandwidth;
+	host->bandwidthThrottleEpoch = 0;
+	host->recalculateBandwidthLimits = 0;
+	host->mtu = MRTP_HOST_DEFAULT_MTU;
+	host->peerCount = peerCount;
+	host->commandCount = 0;
+	host->bufferCount = 0;
+	host->checksum = NULL;
+	host->receivedAddress.host = MRTP_HOST_ANY;
+	host->receivedAddress.port = 0;
+	host->receivedData = NULL;
+	host->receivedDataLength = 0;
+
+	host->totalSentData = 0;
+	host->totalSentPackets = 0;
+	host->totalReceivedData = 0;
+	host->totalReceivedPackets = 0;
+
+	host->connectedPeers = 0;
+	host->bandwidthLimitedPeers = 0;
+	host->duplicatePeers = MRTP_PROTOCOL_MAXIMUM_PEER_ID;
+	host->maximumPacketSize = MRTP_HOST_DEFAULT_MAXIMUM_PACKET_SIZE;
+	host->maximumWaitingData = MRTP_HOST_DEFAULT_MAXIMUM_WAITING_DATA;
+
+	host->intercept = NULL;
+
+	mrtp_list_clear(&host->dispatchQueue);
+
+	//初始化peers数组的信息
+	for (currentPeer = host->peers; currentPeer < &host->peers[host->peerCount]; ++currentPeer) {
+
+		currentPeer->host = host;
+		currentPeer->incomingPeerID = currentPeer - host->peers;
+		currentPeer->data = NULL;
+
+		mrtp_list_clear(&currentPeer->acknowledgements);
+		mrtp_list_clear(&currentPeer->sentReliableCommands);
+		mrtp_list_clear(&currentPeer->outgoingReliableCommands);
+		mrtp_list_clear(&currentPeer->dispatchedCommands);
+
+		mrtp_peer_reset(currentPeer);
+	}
+
+	return host;
+}
+
+MRtpPeer *mrtp_host_connect(MRtpHost * host, const MRtpAddress * address, mrtp_uint32 data) {
+	MRtpPeer * currentPeer;
+	MRtpChannel * channel;
+	MRtpProtocol command;
+
+	for (currentPeer = host->peers; currentPeer < &host->peers[host->peerCount]; ++currentPeer) {
+		//找到第一个可用的peer
+		if (currentPeer->state == MRTP_PEER_STATE_DISCONNECTED)
+			break;
+	}
+
+	if (currentPeer >= &host->peers[host->peerCount])
+		return NULL;
+
+	currentPeer->channels = (MRtpChannel *)mrtp_malloc(MRTP_PROTOCOL_CHANNEL_COUNT * sizeof(MRtpChannel));
+	if (currentPeer->channels == NULL)
+		return NULL;
+	currentPeer->channelCount = MRTP_PROTOCOL_CHANNEL_COUNT;
+	currentPeer->state = MRTP_PEER_STATE_CONNECTING;
+	currentPeer->address = *address;
+	currentPeer->connectID = ++host->randomSeed;
+
+	if (host->outgoingBandwidth == 0)
+		currentPeer->windowSize = MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE;
+	else
+		currentPeer->windowSize = (host->outgoingBandwidth / MRTP_PEER_WINDOW_SIZE_SCALE) *
+		MRTP_PROTOCOL_MINIMUM_WINDOW_SIZE;
+
+	if (currentPeer->windowSize < MRTP_PROTOCOL_MINIMUM_WINDOW_SIZE)
+		currentPeer->windowSize = MRTP_PROTOCOL_MINIMUM_WINDOW_SIZE;
+	else if (currentPeer->windowSize > MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE)
+			currentPeer->windowSize = MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE;
+
+	for (channel = currentPeer->channels; channel < &currentPeer->channels[MRTP_PROTOCOL_CHANNEL_COUNT]; ++channel) {
+
+		channel->outgoingReliableSequenceNumber = 0;
+		channel->incomingReliableSequenceNumber = 0;
+
+		mrtp_list_clear(&channel->incomingReliableCommands);
+
+		channel->usedReliableWindows = 0;
+		memset(channel->reliableWindows, 0, sizeof(channel->reliableWindows));
+	}
+
+	command.header.command = MRTP_PROTOCOL_COMMAND_CONNECT | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
+	command.header.channelID = 0xFF;
+	command.connect.outgoingPeerID = MRTP_HOST_TO_NET_16(currentPeer->incomingPeerID);
+	command.connect.mtu = MRTP_HOST_TO_NET_32(currentPeer->mtu);
+	command.connect.windowSize = MRTP_HOST_TO_NET_32(currentPeer->windowSize);
+	command.connect.incomingBandwidth = MRTP_HOST_TO_NET_32(host->incomingBandwidth);
+	command.connect.outgoingBandwidth = MRTP_HOST_TO_NET_32(host->outgoingBandwidth);
+	command.connect.packetThrottleInterval = MRTP_HOST_TO_NET_32(currentPeer->packetThrottleInterval);
+	command.connect.packetThrottleAcceleration = MRTP_HOST_TO_NET_32(currentPeer->packetThrottleAcceleration);
+	command.connect.packetThrottleDeceleration = MRTP_HOST_TO_NET_32(currentPeer->packetThrottleDeceleration);
+	command.connect.connectID = currentPeer->connectID;
+	command.connect.data = MRTP_HOST_TO_NET_32(data);
+
+	mrtp_peer_queue_outgoing_command(currentPeer, &command, NULL, 0, 0);
+
+	return currentPeer;
+}
+
+
+void mrtp_host_destroy(MRtpHost * host) {
+	MRtpPeer * currentPeer;
+
+	if (host == NULL)
+		return;
+
+	mrtp_socket_destroy(host->socket);
+
+	for (currentPeer = host->peers; currentPeer < &host->peers[host->peerCount]; ++currentPeer) {
+		mrtp_peer_reset(currentPeer);
+	}
+
+	mrtp_free(host->peers);
+	mrtp_free(host);
+}
+
+void mrtp_host_bandwidth_throttle(MRtpHost * host) {
+
+	mrtp_uint32 timeCurrent = mrtp_time_get(),
+		elapsedTime = timeCurrent - host->bandwidthThrottleEpoch,//距离上次流量控制的时间
+		peersRemaining = (mrtp_uint32)host->connectedPeers,
+		dataTotal = ~0,
+		bandwidth = ~0,
+		throttle = 0,
+		bandwidthLimit = 0;
+	int needsAdjustment = host->bandwidthLimitedPeers > 0 ? 1 : 0;
+	MRtpPeer * peer;
+	MRtpProtocol command;
+
+	if (elapsedTime < MRTP_HOST_BANDWIDTH_THROTTLE_INTERVAL)
+		return;
+	//重置做流量控制的时间
+	host->bandwidthThrottleEpoch = timeCurrent;
+
+	if (peersRemaining == 0)
+		return;
+
+	if (host->outgoingBandwidth != 0) {
+		dataTotal = 0;	//peer 的 outgoing data的总和
+
+		//在全带宽时，在间隔时间内传输的数据量
+		bandwidth = (host->outgoingBandwidth * elapsedTime) / 1000;
+
+		for (peer = host->peers; peer < &host->peers[host->peerCount]; ++peer) {
+			if (peer->state != MRTP_PEER_STATE_CONNECTED && peer->state != MRTP_PEER_STATE_DISCONNECT_LATER)
+				continue;
+
+			dataTotal += peer->outgoingDataTotal;
+		}
+	}
+
+	//调节peer -> packetThrottleLimit 和 peer -> packetThrottle
+	while (peersRemaining > 0 && needsAdjustment != 0) {
+		needsAdjustment = 0;
+
+		//throttle = SCALE * bandwidth / (peer)dataTotal，最大是32
+		if (dataTotal <= bandwidth)
+			throttle = MRTP_PEER_PACKET_THROTTLE_SCALE;
+		else
+			throttle = (bandwidth * MRTP_PEER_PACKET_THROTTLE_SCALE) / dataTotal;
+
+		for (peer = host->peers; peer < &host->peers[host->peerCount]; ++peer) {
+			mrtp_uint32 peerBandwidth;
+
+			if ((peer->state != MRTP_PEER_STATE_CONNECTED &&
+				peer->state != MRTP_PEER_STATE_DISCONNECT_LATER) ||	//peer是连接状态
+				peer->incomingBandwidth == 0 ||						//允许接收数据
+				peer->outgoingBandwidthThrottleEpoch == timeCurrent)	//不是刚刚调节过
+				continue;
+
+			peerBandwidth = (peer->incomingBandwidth * elapsedTime) / 1000;	//peer在间隔时间内能接收的最大数据
+
+			//如果 （in coming)peerBandwith / peer->outgoingDataTotal >= bandwith / (peer)dataTotal
+			//如果host发送数据的能力/peer接收的数据的量 大于平均水平时，则暂时不调节
+			if ((throttle * peer->outgoingDataTotal) / MRTP_PEER_PACKET_THROTTLE_SCALE <= peerBandwidth)
+				continue;
+
+			//如果低于平均水平，则将peer->packetThrottleLimit重新计算
+			//否则则按照throttle计算
+			peer->packetThrottleLimit = (peerBandwidth *
+				MRTP_PEER_PACKET_THROTTLE_SCALE) / peer->outgoingDataTotal;
+
+			//packThrottleLimit最小值为1
+			if (peer->packetThrottleLimit == 0)
+				peer->packetThrottleLimit = 1;
+
+			//设置packetThrottle
+			if (peer->packetThrottle > peer->packetThrottleLimit)
+				peer->packetThrottle = peer->packetThrottleLimit;
+
+			//设置调节的时间
+			peer->outgoingBandwidthThrottleEpoch = timeCurrent;
+
+			//调节过后重置发送接收数据总量
+			peer->incomingDataTotal = 0;
+			peer->outgoingDataTotal = 0;
+
+			needsAdjustment = 1;
+			--peersRemaining;
+			bandwidth -= peerBandwidth;
+			dataTotal -= peerBandwidth;
+		}
+	}
+
+	//调节incomingBandwidth为0的peer的throttle
+	//以及上面没有调节的大于平均水平的peer，将其throttle设置为throttle
+	if (peersRemaining > 0) {
+		if (dataTotal <= bandwidth)
+			throttle = MRTP_PEER_PACKET_THROTTLE_SCALE;
+		else
+			throttle = (bandwidth * MRTP_PEER_PACKET_THROTTLE_SCALE) / dataTotal;
+
+		for (peer = host->peers; peer < &host->peers[host->peerCount]; ++peer) {
+			if ((peer->state != MRTP_PEER_STATE_CONNECTED &&
+				peer->state != MRTP_PEER_STATE_DISCONNECT_LATER) ||
+				peer->outgoingBandwidthThrottleEpoch == timeCurrent)
+				continue;
+
+			peer->packetThrottleLimit = throttle;
+
+			if (peer->packetThrottle > peer->packetThrottleLimit)
+				peer->packetThrottle = peer->packetThrottleLimit;
+
+			peer->incomingDataTotal = 0;
+			peer->outgoingDataTotal = 0;
+		}
+	}
+
+	//如果需要重新计算带宽限制
+	if (host->recalculateBandwidthLimits) {
+		host->recalculateBandwidthLimits = 0;
+
+		peersRemaining = (mrtp_uint32)host->connectedPeers;
+		bandwidth = host->incomingBandwidth;
+		needsAdjustment = 1;
+
+		if (bandwidth == 0)
+			bandwidthLimit = 0;
+		else
+			while (peersRemaining > 0 && needsAdjustment != 0) {
+				needsAdjustment = 0;
+				//取平均数，会随着循环增大
+				bandwidthLimit = bandwidth / peersRemaining;
+
+				for (peer = host->peers; peer < &host->peers[host->peerCount]; ++peer) {
+					if ((peer->state != MRTP_PEER_STATE_CONNECTED &&
+						peer->state != MRTP_PEER_STATE_DISCONNECT_LATER) ||	//是已经连接的peer
+						peer->incomingBandwidthThrottleEpoch == timeCurrent)	//之前没有处理过
+						continue;
+
+					if (peer->outgoingBandwidth > 0 &&
+						peer->outgoingBandwidth >= bandwidthLimit)
+						continue;
+					//将outgoingBandwidth小于平均水平的peer标记出来
+					peer->incomingBandwidthThrottleEpoch = timeCurrent;
+
+					needsAdjustment = 1;
+					--peersRemaining;
+					bandwidth -= peer->outgoingBandwidth;
+				}
+			}
+
+		for (peer = host->peers; peer < &host->peers[host->peerCount]; ++peer) {
+
+			if (peer->state != MRTP_PEER_STATE_CONNECTED && peer->state != MRTP_PEER_STATE_DISCONNECT_LATER)
+				continue;
+
+			//发送给peer的command
+			command.header.command = MRTP_PROTOCOL_COMMAND_BANDWIDTH_LIMIT | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
+			command.header.channelID = 0xFF;	//标记响应channel(realiable)
+			command.bandwidthLimit.outgoingBandwidth = MRTP_HOST_TO_NET_32(host->outgoingBandwidth);
+
+			//如果之前标记过，即小于平均水平的peer
+			if (peer->incomingBandwidthThrottleEpoch == timeCurrent)
+				command.bandwidthLimit.incomingBandwidth = MRTP_HOST_TO_NET_32(peer->outgoingBandwidth);
+			else
+				//没处理过的统一设置为 bandwidthlimit
+				command.bandwidthLimit.incomingBandwidth = MRTP_HOST_TO_NET_32(bandwidthLimit);
+
+			//设置发送给peer的command，并将该command添加到peer的command处理队列中
+			mrtp_peer_queue_outgoing_command(peer, &command, NULL, 0, 0);
+		}
+	}
+}

@@ -1,0 +1,3 @@
+## 问题
+
+1. channel中outgoingReliableSequenceNumber和peer中outgoingReliableSequenceNumber的区别？
