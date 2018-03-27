@@ -51,6 +51,7 @@ extern "C"
 		MRTP_SOCKET_SHUTDOWN_READ_WRITE = 2
 	} MRtpSocketShutdown;
 
+
 #define MRTP_HOST_ANY       0
 #define MRTP_HOST_BROADCAST 0xFFFFFFFFU
 #define MRTP_PORT_ANY       0
@@ -380,7 +381,7 @@ extern "C"
 	extern   void       mrtp_host_bandwidth_throttle(MRtpHost *);
 	extern  mrtp_uint32 mrtp_host_random_seed(void);
 
-	MRTP_API int                 mrtp_peer_send(MRtpPeer *, mrtp_uint8, MRtpPacket *);
+	MRTP_API int mrtp_peer_send_reliable(MRtpPeer * peer, MRtpPacket * packet);
 	MRTP_API MRtpPacket *        mrtp_peer_receive(MRtpPeer *, mrtp_uint8 * channelID);
 	MRTP_API void                mrtp_peer_ping(MRtpPeer *);
 	MRTP_API void                mrtp_peer_ping_interval(MRtpPeer *, mrtp_uint32);

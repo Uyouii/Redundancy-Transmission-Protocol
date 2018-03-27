@@ -2,6 +2,8 @@
 #include<cstdlib>
 #include<cstdio>
 #include<cstring>
+#include<string>
+#include<iostream>
 
 #define SERVERADDRESS "10.242.3.221"
 
@@ -50,8 +52,9 @@ int main(int argc, char ** argv) {
 	}
 
 	bool disconnected = false;
+	int packetNum = 0;
 	/* Wait up to 5 seconds for the connection attempt to succeed. */
-	while (mrtp_host_service(client, &event, 5000) >= 0) {
+	while (mrtp_host_service(client, &event, 1000) >= 0) {
 		switch (event.type) {
 		case MRTP_EVENT_TYPE_CONNECT:
 			printf("connect to server %x:%u.\n", event.peer->address.host, event.peer->address.port);
@@ -64,9 +67,15 @@ int main(int argc, char ** argv) {
 		}
 		if (disconnected)
 			break;
-		if (peer->outgoingReliableSequenceNumber > 5) {
+		if (peer->outgoingReliableSequenceNumber > 10 || 
+			peer->channels[MRTP_PROTOCOL_RELIABLE_CHANNEL_NUM].outgoingReliableSequenceNumber > 5) {
 			mrtp_peer_disconnect(peer, 0);
 		}
+		std::string large_str(2000, 'a');
+		std::string packet_str = "packct" + large_str + std::to_string(packetNum);
+		MRtpPacket * packet = mrtp_packet_create(packet_str.c_str(), packet_str.size()+1, MRTP_PACKET_FLAG_RELIABLE);
+		mrtp_peer_send_reliable(peer, packet);
+		packetNum++;
 	}
 	atexit(mrtp_deinitialize);
 	system("pause");

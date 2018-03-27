@@ -84,7 +84,8 @@ static void mrtp_protocol_send_acknowledgements(MRtpHost * host, MRtpPeer * peer
 		buffer->dataLength = sizeof(MRtpProtocolAcknowledge);
 
 #ifdef SENDANDRECEIVE
-		printf("add buffer [ack]: (%d)\n", MRTP_NET_TO_HOST_16(command->header.reliableSequenceNumber));
+		printf("add buffer [ack]: (%d) at channel: [%d]\n",
+			MRTP_NET_TO_HOST_16(command->header.reliableSequenceNumber), acknowledgement->command.header.channelID);
 #endif // SENDANDRECEIVE
 
 
@@ -128,7 +129,7 @@ static void mrtp_protocol_notify_disconnect(MRtpHost * host, MRtpPeer * peer, MR
 
 		mrtp_peer_reset(peer);
 	}
-	else {	
+	else {
 		peer->eventData = 0;
 		mrtp_protocol_dispatch_state(host, peer, MRTP_PEER_STATE_ZOMBIE);
 	}
@@ -321,9 +322,10 @@ static int mrtp_protocol_send_reliable_outgoing_commands(MRtpHost * host, MRtpPe
 			peer->reliableDataInTransit += outgoingCommand->fragmentLength;
 		}
 #ifdef SENDANDRECEIVE
-		printf("add buffer [%s] : (%d)\n",
+		printf("add buffer [%s]: (%d) at channel[%d]\n",
 			commandName[outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK],
-			MRTP_NET_TO_HOST_16(outgoingCommand->command.header.reliableSequenceNumber));
+			MRTP_NET_TO_HOST_16(outgoingCommand->command.header.reliableSequenceNumber),
+			outgoingCommand->command.header.channelID);
 #endif // SENDANDRECEIVE
 
 		++peer->packetsSent;
@@ -447,77 +449,6 @@ static int mrtp_protocol_send_outgoing_commands(MRtpHost * host, MRtpEvent * eve
 	return 0;
 }
 
-//检查该host有无需要处理的事件，如果不存在需要处理的事件则返回0，否则处理后返回1
-//从host->dispatchQueue中弹出一个peer，
-//如果peer状态为等待或者连接成功，则将其状态改为已经连接，事件类型定义为连接，并返回1
-//如果peer状态为无响应，则将事件类型定义为断开连接，并将peer重置
-//如果peer状态为已连接，则检测该peer有无发送的packet，如果无发送的packet，则进行下一个循环
-//如果有发送的packet，则从peer的packcet的队列中弹出一个packet，放在event->packet中，并将事件类型定义为接收包
-//如果仍有需要发送的packet，则将peer压入host事件处理队列的尾部
-//如果是其他状态，则继续检测下一个peer的状态时候符合上述条件
-static int mrtp_protocol_dispatch_incoming_commands(MRtpHost * host, MRtpEvent * event) {
-
-	while (!mrtp_list_empty(&host->dispatchQueue)) {
-
-		//MRtpPeer结构中的第一个元素是MRtpListNode，所以可以将其指针赋给MRtpListNode并调用其中元素
-		MRtpPeer * peer = (MRtpPeer *)mrtp_list_remove(mrtp_list_begin(&host->dispatchQueue));
-
-		peer->needsDispatch = 0;
-
-		switch (peer->state) {
-
-			//等待连接或者连接成功，host、peer状态变为已经连接，事件类型为连接
-		case MRTP_PEER_STATE_CONNECTION_PENDING:
-		case MRTP_PEER_STATE_CONNECTION_SUCCEEDED:
-			mrtp_protocol_change_state(host, peer, MRTP_PEER_STATE_CONNECTED);
-
-			event->type = MRTP_EVENT_TYPE_CONNECT;
-			event->peer = peer;
-			event->data = peer->eventData;
-
-			return 1;
-		//如果peer的状态为无响应，则事件类型为断开连接，并将peer重置
-		case MRTP_PEER_STATE_ZOMBIE:
-			host->recalculateBandwidthLimits = 1; //需要重新计算带宽，将该peer断开连接重置
-
-			event->type = MRTP_EVENT_TYPE_DISCONNECT;
-			event->peer = peer;
-			event->data = peer->eventData;
-
-			mrtp_peer_reset(peer);
-
-			return 1;
-			//如果状态是已经连接，则收取其发送过来的packet
-			//如果收到则返回1，否则接着进行while循环
-		case MRTP_PEER_STATE_CONNECTED:
-			if (mrtp_list_empty(&peer->dispatchedCommands))
-				continue;
-			//设置包的同时修改event的channelID
-			event->packet = mrtp_peer_receive(peer, &event->channelID);
-			if (event->packet == NULL)
-				continue;
-
-			event->type = MRTP_EVENT_TYPE_RECEIVE;
-			event->peer = peer;
-
-			//如果还有需要处理的command，则将该peer插入host处理队列的尾部，并将peer->needsDispatch置为1
-			if (!mrtp_list_empty(&peer->dispatchedCommands)) {
-				peer->needsDispatch = 1;
-				//把该peer加入到host的处理队列中
-				mrtp_list_insert(mrtp_list_end(&host->dispatchQueue), &peer->dispatchList);
-			}
-
-			return 1;
-
-		default:
-			break;
-		}
-	}
-
-	return 0;
-}
-
-
 //处理确认请求
 static int mrtp_protocol_handle_acknowledge(MRtpHost * host, MRtpEvent * event,
 	MRtpPeer * peer, const MRtpProtocol * command)
@@ -608,7 +539,7 @@ static int mrtp_protocol_handle_acknowledge(MRtpHost * host, MRtpEvent * event,
 //为host初始化一个peer
 //处理连接请求，如果连接成功则将连接确认的command（verify command）移动到outgoing队列
 //为host创建一个新的peer对象处理该连接
-static MRtpPeer * mrtp_protocol_handle_connect(MRtpHost * host, MRtpProtocolHeader * header, MRtpProtocol * command) 
+static MRtpPeer * mrtp_protocol_handle_connect(MRtpHost * host, MRtpProtocolHeader * header, MRtpProtocol * command)
 {
 	mrtp_uint8 incomingSessionID, outgoingSessionID;
 	mrtp_uint32 mtu, windowSize;
@@ -656,7 +587,7 @@ static MRtpPeer * mrtp_protocol_handle_connect(MRtpHost * host, MRtpProtocolHead
 
 	incomingSessionID = command->connect.incomingSessionID == 0xFF ? peer->outgoingSessionID : command->connect.incomingSessionID;
 	incomingSessionID = (incomingSessionID + 1) & (MRTP_PROTOCOL_HEADER_SESSION_MASK >> MRTP_PROTOCOL_HEADER_SESSION_SHIFT);
-	if(incomingSessionID == peer->outgoingSessionID)
+	if (incomingSessionID == peer->outgoingSessionID)
 		incomingSessionID = (incomingSessionID + 1) & (MRTP_PROTOCOL_HEADER_SESSION_MASK >> MRTP_PROTOCOL_HEADER_SESSION_SHIFT);
 	peer->outgoingSessionID = incomingSessionID;
 
@@ -949,7 +880,7 @@ static int mrtp_protocol_handle_bandwidth_limit(MRtpHost * host, MRtpPeer * peer
 	return 0;
 }
 
-static int mrtp_protocol_handle_send_reliable(MRtpHost * host, MRtpPeer * peer, const MRtpProtocol * command, 
+static int mrtp_protocol_handle_send_reliable(MRtpHost * host, MRtpPeer * peer, const MRtpProtocol * command,
 	mrtp_uint8 ** currentData)
 {
 	size_t dataLength;
@@ -965,9 +896,116 @@ static int mrtp_protocol_handle_send_reliable(MRtpHost * host, MRtpPeer * peer, 
 		*currentData > & host->receivedData[host->receivedDataLength])
 		return -1;
 
-	if (mrtp_peer_queue_incoming_command(peer, command, (const mrtp_uint8 *)command + sizeof(MRtpProtocolSendReliable), 
+	if (mrtp_peer_queue_incoming_command(peer, command, (const mrtp_uint8 *)command + sizeof(MRtpProtocolSendReliable),
 		dataLength, MRTP_PACKET_FLAG_RELIABLE, 0) == NULL)
 		return -1;
+
+	return 0;
+}
+
+static int mrtp_protocol_handle_send_fragment(MRtpHost * host, MRtpPeer * peer, const MRtpProtocol * command,
+	mrtp_uint8 ** currentData)
+{
+	mrtp_uint32 fragmentNumber,
+		fragmentCount,
+		fragmentOffset,
+		fragmentLength,
+		startSequenceNumber,
+		totalLength;
+	MRtpChannel * channel;
+	mrtp_uint16 startWindow, currentWindow;
+	MRtpListIterator currentCommand;
+	MRtpIncomingCommand * startCommand = NULL;
+
+	if (command->header.channelID >= peer->channelCount ||
+		(peer->state != MRTP_PEER_STATE_CONNECTED && peer->state != MRTP_PEER_STATE_DISCONNECT_LATER))
+		return -1;
+
+	fragmentLength = MRTP_NET_TO_HOST_16(command->sendFragment.dataLength);
+	*currentData += fragmentLength;
+	if (fragmentLength > host->maximumPacketSize ||
+		*currentData < host->receivedData ||
+		*currentData > & host->receivedData[host->receivedDataLength])
+		return -1;
+
+	channel = &peer->channels[command->header.channelID];
+	startSequenceNumber = MRTP_NET_TO_HOST_16(command->sendFragment.startSequenceNumber);
+	startWindow = startSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
+	currentWindow = channel->incomingReliableSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
+
+	if (startSequenceNumber < channel->incomingReliableSequenceNumber)
+		startWindow += MRTP_PEER_RELIABLE_WINDOWS;
+	// 发送的数据包不在发送窗口的范围内
+	if (startWindow < currentWindow || startWindow >= currentWindow + MRTP_PEER_FREE_RELIABLE_WINDOWS - 1)
+		return 0;
+
+	fragmentNumber = MRTP_NET_TO_HOST_32(command->sendFragment.fragmentNumber);
+	fragmentCount = MRTP_NET_TO_HOST_32(command->sendFragment.fragmentCount);
+	fragmentOffset = MRTP_NET_TO_HOST_32(command->sendFragment.fragmentOffset);
+	totalLength = MRTP_NET_TO_HOST_32(command->sendFragment.totalLength);
+
+	if (fragmentCount > MRTP_PROTOCOL_MAXIMUM_FRAGMENT_COUNT ||
+		fragmentNumber >= fragmentCount ||
+		totalLength > host->maximumPacketSize ||
+		fragmentOffset >= totalLength ||
+		fragmentLength > totalLength - fragmentOffset)
+		return -1;
+
+	//首先去incomingReliableCommands中寻找stratCommand
+	for (currentCommand = mrtp_list_previous(mrtp_list_end(&channel->incomingReliableCommands));
+		currentCommand != mrtp_list_end(&channel->incomingReliableCommands);
+		currentCommand = mrtp_list_previous(currentCommand))
+	{
+		MRtpIncomingCommand * incomingCommand = (MRtpIncomingCommand *)currentCommand;
+
+		if (startSequenceNumber >= channel->incomingReliableSequenceNumber) {
+			if (incomingCommand->reliableSequenceNumber < channel->incomingReliableSequenceNumber)
+				continue;
+		}
+		else if (incomingCommand->reliableSequenceNumber >= channel->incomingReliableSequenceNumber)
+			break;
+
+		if (incomingCommand->reliableSequenceNumber <= startSequenceNumber) {
+			if (incomingCommand->reliableSequenceNumber < startSequenceNumber)
+				break;
+
+			if ((incomingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK) != MRTP_PROTOCOL_COMMAND_SEND_FRAGMENT ||
+				totalLength != incomingCommand->packet->dataLength ||
+				fragmentCount != incomingCommand->fragmentCount)
+				return -1;
+			//找到了
+			startCommand = incomingCommand;
+			break;
+		}
+	}
+
+	if (startCommand == NULL) {
+		MRtpProtocol hostCommand = *command;
+
+		hostCommand.header.reliableSequenceNumber = startSequenceNumber;
+
+		startCommand = mrtp_peer_queue_incoming_command(peer, &hostCommand, NULL, totalLength, MRTP_PACKET_FLAG_RELIABLE, fragmentCount);
+		if (startCommand == NULL)
+			return -1;
+	}
+
+	//这里把所有的数据都集中到一个command上了
+	if ((startCommand->fragments[fragmentNumber / 32] & (1 << (fragmentNumber % 32))) == 0) {
+		--startCommand->fragmentsRemaining;
+
+		startCommand->fragments[fragmentNumber / 32] |= (1 << (fragmentNumber % 32));
+
+		if (fragmentOffset + fragmentLength > startCommand->packet->dataLength)
+			fragmentLength = startCommand->packet->dataLength - fragmentOffset;
+
+		memcpy(startCommand->packet->data + fragmentOffset,
+			(mrtp_uint8 *)command + sizeof(MRtpProtocolSendFragment),
+			fragmentLength);
+
+		//等到所有的fragment都到了才dispatch
+		if (startCommand->fragmentsRemaining <= 0)
+			mrtp_peer_dispatch_incoming_reliable_commands(peer, channel);
+	}
 
 	return 0;
 }
@@ -1045,8 +1083,8 @@ static int mrtp_protocol_handle_incoming_commands(MRtpHost * host, MRtpEvent * e
 
 		command->header.reliableSequenceNumber = MRTP_NET_TO_HOST_16(command->header.reliableSequenceNumber);
 #ifdef SENDANDRECEIVE
-		printf("receive [%s]: (%d) from peer: <%d>\n", commandName[commandNumber],
-			command->header.reliableSequenceNumber, peerID);
+		printf("receive [%s]: (%d) from peer: <%d> at channel: [%d]\n", commandName[commandNumber],
+			command->header.reliableSequenceNumber, peerID, command->header.channelID);
 #endif // SENDANDRECEIVE
 
 		switch (commandNumber) {
@@ -1086,17 +1124,17 @@ static int mrtp_protocol_handle_incoming_commands(MRtpHost * host, MRtpEvent * e
 				goto commandError;
 			break;
 
-		//case MRTP_PROTOCOL_COMMAND_SEND_RELIABLE:
-		//	if (mrtp_protocol_handle_send_reliable(host, peer, command, &currentData))
-		//		goto commandError;
-		//	break;
+		case MRTP_PROTOCOL_COMMAND_SEND_RELIABLE:
+			if (mrtp_protocol_handle_send_reliable(host, peer, command, &currentData))
+				goto commandError;
+			break;
 
-		//case MRTP_PROTOCOL_COMMAND_SEND_FRAGMENT:
-		//	if (mrtp_protocol_handle_send_fragment(host, peer, command, &currentData))
-		//		goto commandError;
-		//	break;
-			
-		/*	
+		case MRTP_PROTOCOL_COMMAND_SEND_FRAGMENT:
+			if (mrtp_protocol_handle_send_fragment(host, peer, command, &currentData))
+				goto commandError;
+			break;
+
+			/*
 
 			case MRTP_PROTOCOL_COMMAND_THROTTLE_CONFIGURE:
 			if (mrtp_protocol_handle_throttle_configure(host, peer, command))
@@ -1186,6 +1224,67 @@ static int mrtp_protocol_receive_incoming_commands(MRtpHost * host, MRtpEvent * 
 	return -1;
 }
 
+
+static int mrtp_protocol_dispatch_incoming_commands(MRtpHost * host, MRtpEvent * event) {
+
+	while (!mrtp_list_empty(&host->dispatchQueue)) {
+
+		MRtpPeer * peer = (MRtpPeer *)mrtp_list_remove(mrtp_list_begin(&host->dispatchQueue));
+
+		peer->needsDispatch = 0;
+
+		switch (peer->state) {
+
+			//等待连接或者连接成功，host、peer状态变为已经连接，事件类型为连接
+		case MRTP_PEER_STATE_CONNECTION_PENDING:
+		case MRTP_PEER_STATE_CONNECTION_SUCCEEDED:
+			mrtp_protocol_change_state(host, peer, MRTP_PEER_STATE_CONNECTED);
+
+			event->type = MRTP_EVENT_TYPE_CONNECT;
+			event->peer = peer;
+			event->data = peer->eventData;
+
+			return 1;
+
+		case MRTP_PEER_STATE_ZOMBIE:
+			host->recalculateBandwidthLimits = 1;
+
+			event->type = MRTP_EVENT_TYPE_DISCONNECT;
+			event->peer = peer;
+			event->data = peer->eventData;
+
+			mrtp_peer_reset(peer);
+
+			return 1;
+
+		case MRTP_PEER_STATE_CONNECTED:
+			if (mrtp_list_empty(&peer->dispatchedCommands))
+				continue;
+			//设置包的同时修改event的channelID
+			event->packet = mrtp_peer_receive(peer, &event->channelID);
+			if (event->packet == NULL)
+				continue;
+
+			event->type = MRTP_EVENT_TYPE_RECEIVE;
+			event->peer = peer;
+
+			if (!mrtp_list_empty(&peer->dispatchedCommands)) {
+				peer->needsDispatch = 1;
+				//把该peer加入到host的处理队列中
+				mrtp_list_insert(mrtp_list_end(&host->dispatchQueue), &peer->dispatchList);
+			}
+
+			return 1;
+
+		default:
+			break;
+		}
+	}
+
+	return 0;
+}
+
+
 int mrtp_host_service(MRtpHost * host, MRtpEvent * event, mrtp_uint32 timeout) {
 
 	mrtp_uint32 waitCondition;
@@ -1214,7 +1313,7 @@ int mrtp_host_service(MRtpHost * host, MRtpEvent * event, mrtp_uint32 timeout) {
 
 	do {
 		//距离上次做流量控制经过的时间大于1秒，则进行流量控制
-		if (MRTP_TIME_DIFFERENCE(host->serviceTime, host->bandwidthThrottleEpoch) >= 
+		if (MRTP_TIME_DIFFERENCE(host->serviceTime, host->bandwidthThrottleEpoch) >=
 			MRTP_HOST_BANDWIDTH_THROTTLE_INTERVAL)
 			mrtp_host_bandwidth_throttle(host);
 

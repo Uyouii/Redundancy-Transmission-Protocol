@@ -23,7 +23,7 @@ void mrtp_peer_on_connect(MRtpPeer * peer) {
 	}
 }
 
-static void mrtp_peer_remove_incoming_commands(MRtpList * queue, MRtpListIterator startCommand, 
+static void mrtp_peer_remove_incoming_commands(MRtpList * queue, MRtpListIterator startCommand,
 	MRtpListIterator endCommand) {
 
 	MRtpListIterator currentCommand;
@@ -181,7 +181,7 @@ void mrtp_peer_setup_outgoing_command(MRtpPeer * peer, MRtpOutgoingCommand * out
 
 	MRtpChannel * channel = &peer->channels[outgoingCommand->command.header.channelID];
 
-	peer->outgoingDataTotal += mrtp_protocol_command_size(outgoingCommand->command.header.command) + 
+	peer->outgoingDataTotal += mrtp_protocol_command_size(outgoingCommand->command.header.command) +
 		outgoingCommand->fragmentLength;
 
 	// 根据指令类型增加相应的序号
@@ -190,8 +190,8 @@ void mrtp_peer_setup_outgoing_command(MRtpPeer * peer, MRtpOutgoingCommand * out
 		outgoingCommand->reliableSequenceNumber = peer->outgoingReliableSequenceNumber;
 	}
 	else if (outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE) {
-			++channel->outgoingReliableSequenceNumber;
-			outgoingCommand->reliableSequenceNumber = channel->outgoingReliableSequenceNumber;
+		++channel->outgoingReliableSequenceNumber;
+		outgoingCommand->reliableSequenceNumber = channel->outgoingReliableSequenceNumber;
 	}
 	else {
 		outgoingCommand->reliableSequenceNumber = channel->outgoingReliableSequenceNumber;
@@ -263,7 +263,7 @@ int mrtp_peer_throttle(MRtpPeer * peer, mrtp_uint32 rtt) {
 			peer->packetThrottle = peer->packetThrottleLimit;
 
 		return 1;
-	} 
+	}
 	else if (rtt > peer->lastRoundTripTime + 2 * peer->lastRoundTripTimeVariance) {
 		if (peer->packetThrottle > peer->packetThrottleDeceleration)
 			peer->packetThrottle -= peer->packetThrottleDeceleration;
@@ -308,7 +308,7 @@ void mrtp_peer_disconnect(MRtpPeer * peer, mrtp_uint32 data) {
 
 void mrtp_peer_disconnect_later(MRtpPeer * peer, mrtp_uint32 data) {
 	if ((peer->state == MRTP_PEER_STATE_CONNECTED || peer->state == MRTP_PEER_STATE_DISCONNECT_LATER) &&
-		!(mrtp_list_empty(&peer->outgoingReliableCommands) &&  mrtp_list_empty(&peer->sentReliableCommands)))
+		!(mrtp_list_empty(&peer->outgoingReliableCommands) && mrtp_list_empty(&peer->sentReliableCommands)))
 	{
 		peer->state = MRTP_PEER_STATE_DISCONNECT_LATER;
 		peer->eventData = data;
@@ -366,224 +366,250 @@ MRtpPacket * mrtp_peer_receive(MRtpPeer * peer, mrtp_uint8 * channelID) {
 	return packet;
 }
 
-//int mrtp_peer_send(MRtpPeer * peer, mrtp_uint8 channelID, MRtpPacket * packet) {
-//
-//	MRtpChannel * channel = &peer->channels[channelID];
-//	MRtpProtocol command;
-//	size_t fragmentLength;
-//
-//	if (peer->state != MRTP_PEER_STATE_CONNECTED || channelID >= peer->channelCount ||
-//		packet->dataLength > peer->host->maximumPacketSize)
-//		return -1;
-//
-//	fragmentLength = peer->mtu - sizeof(MRtpProtocolHeader) - sizeof(MRtpProtocolSendFragment);
-//	if (peer->host->checksum != NULL)
-//		fragmentLength -= sizeof(mrtp_uint32);
-//
-//	// 如果需要分片
-//	if (packet->dataLength > fragmentLength) {
-//		mrtp_uint32 fragmentCount = (packet->dataLength + fragmentLength - 1) / fragmentLength,
-//			fragmentNumber,
-//			fragmentOffset;
-//		mrtp_uint8 commandNumber;
-//		mrtp_uint16 startSequenceNumber;
-//		MRtpList fragments;
-//		MRtpOutgoingCommand * fragment;
-//
-//		if (fragmentCount > MRTP_PROTOCOL_MAXIMUM_FRAGMENT_COUNT)
-//			return -1;
-//
-//		commandNumber = MRTP_PROTOCOL_COMMAND_SEND_FRAGMENT | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
-//		startSequenceNumber = MRTP_HOST_TO_NET_16(channel->outgoingReliableSequenceNumber + 1);
-//
-//		mrtp_list_clear(&fragments);
-//
-//		for (fragmentNumber = 0, fragmentOffset = 0; fragmentOffset < packet->dataLength;
-//			++fragmentNumber, fragmentOffset += fragmentLength)
-//		{
-//			if (packet->dataLength - fragmentOffset < fragmentLength)
-//				fragmentLength = packet->dataLength - fragmentOffset;
-//
-//			fragment = (MRtpOutgoingCommand *)mrtp_malloc(sizeof(MRtpOutgoingCommand));
-//			if (fragment == NULL) {
-//				while (!mrtp_list_empty(&fragments)) {
-//					fragment = (MRtpOutgoingCommand *)mrtp_list_remove(mrtp_list_begin(&fragments));
-//
-//					mrtp_free(fragment);
-//				}
-//
-//				return -1;
-//			}
-//
-//			fragment->fragmentOffset = fragmentOffset;
-//			fragment->fragmentLength = fragmentLength;
-//			fragment->packet = packet;
-//			fragment->command.header.command = commandNumber;
-//			fragment->command.header.channelID = channelID;
-//			fragment->command.sendFragment.startSequenceNumber = startSequenceNumber;
-//			fragment->command.sendFragment.dataLength = MRTP_HOST_TO_NET_16(fragmentLength);
-//			fragment->command.sendFragment.fragmentCount = MRTP_HOST_TO_NET_32(fragmentCount);
-//			fragment->command.sendFragment.fragmentNumber = MRTP_HOST_TO_NET_32(fragmentNumber);
-//			fragment->command.sendFragment.totalLength = MRTP_HOST_TO_NET_32(packet->dataLength);
-//			fragment->command.sendFragment.fragmentOffset = MRTP_NET_TO_HOST_32(fragmentOffset);
-//
-//			mrtp_list_insert(mrtp_list_end(&fragments), fragment);
-//		}
-//
-//		packet->referenceCount += fragmentNumber;
-//
-//		while (!mrtp_list_empty(&fragments)) {
-//			fragment = (MRtpOutgoingCommand *)mrtp_list_remove(mrtp_list_begin(&fragments));
-//
-//			mrtp_peer_setup_outgoing_command(peer, fragment);
-//		}
-//
-//		return 0;
-//	}
-//
-//	command.header.channelID = channelID;
-//
-//	// 暂时只实现了可靠包的发送
-//	//if (packet->flags & MRTP_PACKET_FLAG_RELIABLE ) {
-//		command.header.command = MRTP_PROTOCOL_COMMAND_SEND_RELIABLE | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
-//		command.sendReliable.dataLength = MRTP_HOST_TO_NET_16(packet->dataLength);
-//	//}
-//
-//	if (mrtp_peer_queue_outgoing_command(peer, &command, packet, 0, packet->dataLength) == NULL)
-//		return -1;
-//
-//	return 0;
-//}
-//
-//MRtpIncomingCommand *mrtp_peer_queue_incoming_command(MRtpPeer * peer, const MRtpProtocol * command, 
-//	const void * data, size_t dataLength, mrtp_uint32 flags, mrtp_uint32 fragmentCount)
-//{
-//	static MRtpIncomingCommand dummyCommand;
-//
-//	MRtpChannel * channel = &peer->channels[command->header.channelID];
-//	mrtp_uint32 unreliableSequenceNumber = 0, reliableSequenceNumber = 0;
-//	mrtp_uint16 reliableWindow, currentWindow;
-//	MRtpIncomingCommand * incomingCommand;
-//	MRtpListIterator currentCommand;
-//	MRtpPacket * packet = NULL;
-//
-//	if (peer->state == MRTP_PEER_STATE_DISCONNECT_LATER)
-//		goto discardCommand;
-//
-//	reliableSequenceNumber = command->header.reliableSequenceNumber;
-//	reliableWindow = reliableSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
-//	currentWindow = channel->incomingReliableSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
-//
-//	if (reliableSequenceNumber < channel->incomingReliableSequenceNumber)
-//		reliableWindow += MRTP_PEER_RELIABLE_WINDOWS;
-//	//检测是否符合正在传输的window的范围
-//	if (reliableWindow < currentWindow || reliableWindow >= currentWindow + MRTP_PEER_FREE_RELIABLE_WINDOWS - 1)
-//		goto discardCommand;
-//
-//
-//	switch (command->header.command & MRTP_PROTOCOL_COMMAND_MASK)
-//	{
-//	case MRTP_PROTOCOL_COMMAND_SEND_FRAGMENT:
-//	case MRTP_PROTOCOL_COMMAND_SEND_RELIABLE:
-//
-//		if (reliableSequenceNumber == channel->incomingReliableSequenceNumber)
-//			goto discardCommand;
-//
-//		for (currentCommand = mrtp_list_previous(mrtp_list_end(&channel->incomingReliableCommands));
-//			currentCommand != mrtp_list_end(&channel->incomingReliableCommands);
-//			currentCommand = mrtp_list_previous(currentCommand))
-//		{
-//			incomingCommand = (MRtpIncomingCommand *)currentCommand;
-//
-//			//可能会序号重用，所以要判断是否是已经从0开始
-//			if (reliableSequenceNumber >= channel->incomingReliableSequenceNumber)
-//			{
-//				if (incomingCommand->reliableSequenceNumber < channel->incomingReliableSequenceNumber)
-//					continue;
-//			}
-//			else
-//				if (incomingCommand->reliableSequenceNumber >= channel->incomingReliableSequenceNumber)
-//					break;
-//
-//			//找到把command插入到合适的位置
-//			if (incomingCommand->reliableSequenceNumber <= reliableSequenceNumber)
-//			{
-//				if (incomingCommand->reliableSequenceNumber < reliableSequenceNumber)
-//					break;
-//
-//				goto discardCommand;
-//			}
-//		}
-//		break;
-//
-//	default:
-//		goto discardCommand;
-//	}
-//
-//	if (peer->totalWaitingData >= peer->host->maximumWaitingData)
-//		goto notifyError;
-//
-//	packet = mrtp_packet_create(data, dataLength, flags);
-//	if (packet == NULL)
-//		goto notifyError;
-//
-//	incomingCommand = (MRtpIncomingCommand *)mrtp_malloc(sizeof(MRtpIncomingCommand));
-//	if (incomingCommand == NULL)
-//		goto notifyError;
-//
-//	incomingCommand->reliableSequenceNumber = command->header.reliableSequenceNumber;
-//	incomingCommand->command = *command;
-//	incomingCommand->fragmentCount = fragmentCount;
-//	incomingCommand->fragmentsRemaining = fragmentCount;
-//	incomingCommand->packet = packet;
-//	incomingCommand->fragments = NULL;
-//
-//	if (fragmentCount > 0) {
-//		//分配fragments用来记录已经到的fragment
-//		if (fragmentCount <= MRTP_PROTOCOL_MAXIMUM_FRAGMENT_COUNT)
-//			incomingCommand->fragments = (mrtp_uint32 *)mrtp_malloc((fragmentCount + 31) / 32 * sizeof(mrtp_uint32));
-//		if (incomingCommand->fragments == NULL) {
-//			mrtp_free(incomingCommand);
-//
-//			goto notifyError;
-//		}
-//		memset(incomingCommand->fragments, 0, (fragmentCount + 31) / 32 * sizeof(mrtp_uint32));
-//	}
-//
-//	if (packet != NULL) {
-//		++packet->referenceCount;
-//
-//		peer->totalWaitingData += packet->dataLength;
-//	}
-//
-//	mrtp_list_insert(mrtp_list_next(currentCommand), incomingCommand);
-//
-//	switch (command->header.command & MRTP_PROTOCOL_COMMAND_MASK)
-//	{
-//	case MRTP_PROTOCOL_COMMAND_SEND_FRAGMENT:
-//	case MRTP_PROTOCOL_COMMAND_SEND_RELIABLE:
-//		mrtp_peer_dispatch_incoming_reliable_commands(peer, channel);
-//		break;
-//
-//	default:
-//		mrtp_peer_dispatch_incoming_unreliable_commands(peer, channel);
-//		break;
-//	}
-//
-//	return incomingCommand;
-//
-//discardCommand:
-//	if (fragmentCount > 0)
-//		goto notifyError;
-//
-//	if (packet != NULL && packet->referenceCount == 0)
-//		mrtp_packet_destroy(packet);
-//
-//	return &dummyCommand;
-//
-//notifyError:
-//	if (packet != NULL && packet->referenceCount == 0)
-//		mrtp_packet_destroy(packet);
-//
-//	return NULL;
-//}
+int mrtp_peer_send_reliable(MRtpPeer * peer, MRtpPacket * packet) {
+
+	if (peer->state != MRTP_PEER_STATE_CONNECTED || packet->dataLength > peer->host->maximumPacketSize)
+		return -1;
+
+	MRtpChannel * channel = &peer->channels[MRTP_PROTOCOL_RELIABLE_CHANNEL_NUM];
+	MRtpProtocol command;
+	size_t fragmentLength;
+
+	fragmentLength = peer->mtu - sizeof(MRtpProtocolHeader) - sizeof(MRtpProtocolSendFragment);
+	if (peer->host->checksum != NULL)
+		fragmentLength -= sizeof(mrtp_uint32);
+
+	// 如果需要分片
+	if (packet->dataLength > fragmentLength) {
+		mrtp_uint32 fragmentCount = (packet->dataLength + fragmentLength - 1) / fragmentLength,
+			fragmentNumber,
+			fragmentOffset;
+		mrtp_uint8 commandNumber;
+		mrtp_uint16 startSequenceNumber;
+		MRtpList fragments;
+		MRtpOutgoingCommand * fragment;
+
+		if (fragmentCount > MRTP_PROTOCOL_MAXIMUM_FRAGMENT_COUNT)
+			return -1;
+
+		commandNumber = MRTP_PROTOCOL_COMMAND_SEND_FRAGMENT | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
+		startSequenceNumber = MRTP_HOST_TO_NET_16(channel->outgoingReliableSequenceNumber + 1);
+
+		mrtp_list_clear(&fragments);
+
+		for (fragmentNumber = 0, fragmentOffset = 0; fragmentOffset < packet->dataLength;
+			++fragmentNumber, fragmentOffset += fragmentLength)
+		{
+			if (packet->dataLength - fragmentOffset < fragmentLength)
+				fragmentLength = packet->dataLength - fragmentOffset;
+
+			fragment = (MRtpOutgoingCommand *)mrtp_malloc(sizeof(MRtpOutgoingCommand));
+			if (fragment == NULL) {
+				while (!mrtp_list_empty(&fragments)) {
+					fragment = (MRtpOutgoingCommand *)mrtp_list_remove(mrtp_list_begin(&fragments));
+
+					mrtp_free(fragment);
+				}
+
+				return -1;
+			}
+
+			fragment->fragmentOffset = fragmentOffset;
+			fragment->fragmentLength = fragmentLength;
+			fragment->packet = packet;
+			fragment->command.header.command = commandNumber;
+			fragment->command.header.channelID = MRTP_PROTOCOL_RELIABLE_CHANNEL_NUM;
+			fragment->command.sendFragment.startSequenceNumber = startSequenceNumber;
+			fragment->command.sendFragment.dataLength = MRTP_HOST_TO_NET_16(fragmentLength);
+			fragment->command.sendFragment.fragmentCount = MRTP_HOST_TO_NET_32(fragmentCount);
+			fragment->command.sendFragment.fragmentNumber = MRTP_HOST_TO_NET_32(fragmentNumber);
+			fragment->command.sendFragment.totalLength = MRTP_HOST_TO_NET_32(packet->dataLength);
+			fragment->command.sendFragment.fragmentOffset = MRTP_NET_TO_HOST_32(fragmentOffset);
+
+			mrtp_list_insert(mrtp_list_end(&fragments), fragment);
+		}
+
+		packet->referenceCount += fragmentNumber;
+
+		while (!mrtp_list_empty(&fragments)) {
+			fragment = (MRtpOutgoingCommand *)mrtp_list_remove(mrtp_list_begin(&fragments));
+
+			mrtp_peer_setup_outgoing_command(peer, fragment);
+		}
+
+	}
+	else {
+		command.header.channelID = MRTP_PROTOCOL_RELIABLE_CHANNEL_NUM;
+
+		command.header.command = MRTP_PROTOCOL_COMMAND_SEND_RELIABLE | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
+		command.sendReliable.dataLength = MRTP_HOST_TO_NET_16(packet->dataLength);
+
+		if (mrtp_peer_queue_outgoing_command(peer, &command, packet, 0, packet->dataLength) == NULL)
+			return -1;
+	}
+
+	return 0;
+}
+
+MRtpIncomingCommand *mrtp_peer_queue_incoming_command(MRtpPeer * peer, const MRtpProtocol * command,
+	const void * data, size_t dataLength, mrtp_uint32 flags, mrtp_uint32 fragmentCount)
+{
+	static MRtpIncomingCommand dummyCommand;
+
+	MRtpChannel * channel = &peer->channels[command->header.channelID];
+	mrtp_uint32 unreliableSequenceNumber = 0, reliableSequenceNumber = 0;
+	mrtp_uint16 reliableWindow, currentWindow;
+	MRtpIncomingCommand * incomingCommand;
+	MRtpListIterator currentCommand;
+	MRtpPacket * packet = NULL;
+
+	if (peer->state == MRTP_PEER_STATE_DISCONNECT_LATER)
+		goto discardCommand;
+
+	reliableSequenceNumber = command->header.reliableSequenceNumber;
+	reliableWindow = reliableSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
+	currentWindow = channel->incomingReliableSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
+
+	// 如果sequenceNumber 大小溢出了
+	if (reliableSequenceNumber < channel->incomingReliableSequenceNumber)
+		reliableWindow += MRTP_PEER_RELIABLE_WINDOWS;
+
+	if (reliableWindow < currentWindow || reliableWindow >= currentWindow + MRTP_PEER_FREE_RELIABLE_WINDOWS - 1)
+		goto discardCommand;
+
+	switch (command->header.command & MRTP_PROTOCOL_COMMAND_MASK)
+	{
+	case MRTP_PROTOCOL_COMMAND_SEND_FRAGMENT:
+	case MRTP_PROTOCOL_COMMAND_SEND_RELIABLE:
+
+		if (reliableSequenceNumber == channel->incomingReliableSequenceNumber)
+			goto discardCommand;
+
+		for (currentCommand = mrtp_list_previous(mrtp_list_end(&channel->incomingReliableCommands));
+			currentCommand != mrtp_list_end(&channel->incomingReliableCommands);
+			currentCommand = mrtp_list_previous(currentCommand))
+		{
+			incomingCommand = (MRtpIncomingCommand *)currentCommand;
+
+			// 大神级操作！！！句句精辟
+			if (reliableSequenceNumber >= channel->incomingReliableSequenceNumber) {
+				if (incomingCommand->reliableSequenceNumber < channel->incomingReliableSequenceNumber)
+					continue;
+			}
+			else if (incomingCommand->reliableSequenceNumber >= channel->incomingReliableSequenceNumber)
+				break;
+
+			//找到把command插入到合适的位置
+			if (incomingCommand->reliableSequenceNumber <= reliableSequenceNumber) {
+				if (incomingCommand->reliableSequenceNumber < reliableSequenceNumber)
+					break;
+				// 如果相等
+				goto discardCommand;
+			}
+		}
+		break;
+
+	default:
+		goto discardCommand;
+	}
+
+	if (peer->totalWaitingData >= peer->host->maximumWaitingData)
+		goto notifyError;
+
+	packet = mrtp_packet_create(data, dataLength, flags);
+	if (packet == NULL)
+		goto notifyError;
+
+	incomingCommand = (MRtpIncomingCommand *)mrtp_malloc(sizeof(MRtpIncomingCommand));
+	if (incomingCommand == NULL)
+		goto notifyError;
+
+	incomingCommand->reliableSequenceNumber = command->header.reliableSequenceNumber;
+	incomingCommand->command = *command;
+	incomingCommand->fragmentCount = fragmentCount;
+	incomingCommand->fragmentsRemaining = fragmentCount;
+	incomingCommand->packet = packet;
+	incomingCommand->fragments = NULL;
+
+	if (fragmentCount > 0) {
+		//分配fragments用来记录已经到的fragment
+		if (fragmentCount <= MRTP_PROTOCOL_MAXIMUM_FRAGMENT_COUNT)
+			incomingCommand->fragments = (mrtp_uint32 *)mrtp_malloc((fragmentCount + 31) / 32 * sizeof(mrtp_uint32));
+		if (incomingCommand->fragments == NULL) {
+			mrtp_free(incomingCommand);
+
+			goto notifyError;
+		}
+		memset(incomingCommand->fragments, 0, (fragmentCount + 31) / 32 * sizeof(mrtp_uint32));
+	}
+
+	if (packet != NULL) {
+		++packet->referenceCount;
+		peer->totalWaitingData += packet->dataLength;
+	}
+
+	mrtp_list_insert(mrtp_list_next(currentCommand), incomingCommand);
+
+	switch (command->header.command & MRTP_PROTOCOL_COMMAND_MASK)
+	{
+	case MRTP_PROTOCOL_COMMAND_SEND_FRAGMENT:
+	case MRTP_PROTOCOL_COMMAND_SEND_RELIABLE:
+		mrtp_peer_dispatch_incoming_reliable_commands(peer, channel);
+		break;
+
+	default:
+		break;
+	}
+
+	return incomingCommand;
+
+discardCommand:
+	if (fragmentCount > 0)
+		goto notifyError;
+
+	if (packet != NULL && packet->referenceCount == 0)
+		mrtp_packet_destroy(packet);
+
+	return &dummyCommand;
+
+notifyError:
+	if (packet != NULL && packet->referenceCount == 0)
+		mrtp_packet_destroy(packet);
+
+	return NULL;
+}
+
+// 将已经收到的序号连续的command移动到dispatchCommand队列中
+void mrtp_peer_dispatch_incoming_reliable_commands(MRtpPeer * peer, MRtpChannel * channel) {
+
+	MRtpListIterator currentCommand;
+
+	for (currentCommand = mrtp_list_begin(&channel->incomingReliableCommands);
+		currentCommand != mrtp_list_end(&channel->incomingReliableCommands);
+		currentCommand = mrtp_list_next(currentCommand))
+	{
+		MRtpIncomingCommand * incomingCommand = (MRtpIncomingCommand *)currentCommand;
+
+		//如果fragement还有剩余或者序号不对就跳出
+		if (incomingCommand->fragmentsRemaining > 0 ||
+			incomingCommand->reliableSequenceNumber != (mrtp_uint16)(channel->incomingReliableSequenceNumber + 1))
+			break;
+
+		channel->incomingReliableSequenceNumber = incomingCommand->reliableSequenceNumber;
+		//将fragement的序号加上
+		if (incomingCommand->fragmentCount > 0)
+			channel->incomingReliableSequenceNumber += incomingCommand->fragmentCount - 1;
+	}
+
+	if (currentCommand == mrtp_list_begin(&channel->incomingReliableCommands))
+		return;
+
+	//移动到dispatch队列
+	mrtp_list_move(mrtp_list_end(&peer->dispatchedCommands), mrtp_list_begin(&channel->incomingReliableCommands), mrtp_list_previous(currentCommand));
+
+	if (!peer->needsDispatch) {
+		mrtp_list_insert(mrtp_list_end(&peer->host->dispatchQueue), &peer->dispatchList);
+
+		peer->needsDispatch = 1;
+	}
+}

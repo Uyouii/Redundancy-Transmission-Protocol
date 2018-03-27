@@ -47,23 +47,19 @@ int main(int argc, char ** argv) {
 			printf("A new client connected from %x:%u.\n",
 				event.peer->address.host,
 				event.peer->address.port);
-			printf("%d\n", event.peer->state);
 			break;
 		case MRTP_EVENT_TYPE_RECEIVE:
-			printf("A packet of length %u containing %s was received from %s on channel %u.\n",
+			printf("A packet of length %u containing %s was received on channel %u.\n",
 				event.packet->dataLength,
 				event.packet->data,
-				event.peer->data,
 				event.channelID);
 			/* Clean up the packet now that we're done using it. */
 			mrtp_packet_destroy(event.packet);
-			printf("%d\n", event.peer->state);
 			break;
 
 		case MRTP_EVENT_TYPE_DISCONNECT:
 			printf("disconnected.\n");
 			event.peer->data = NULL;
-			printf("%d\n", event.peer->state);
 			break;
 		}
 	}
