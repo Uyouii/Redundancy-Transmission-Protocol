@@ -13,7 +13,7 @@ MRtpHost* createServer() {
 
 	server = mrtp_host_create(
 		&address /* the address to bind the server host to */,
-		32      /* allow up to 32 clients and/or outgoing connections */,
+		128      /* allow up to 32 clients and/or outgoing connections */,
 		0      /* assume any amount of incoming bandwidth */,
 		0      /* assume any amount of outgoing bandwidth */
 	);
@@ -61,7 +61,7 @@ int main(int argc, char ** argv) {
 			break;
 
 		case MRTP_EVENT_TYPE_DISCONNECT:
-			printf("%s disconnected.\n", event.peer->data);
+			printf("disconnected.\n");
 			event.peer->data = NULL;
 			printf("%d\n", event.peer->state);
 			break;

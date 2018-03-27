@@ -34,6 +34,9 @@ typedef enum _MRtpProtocolCommand {
 typedef enum _MRtpProtocolFlag {
 	MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE = (1 << 7),
 
+	MRTP_PROTOCOL_HEADER_SESSION_MASK = (3 << 12),
+	MRTP_PROTOCOL_HEADER_SESSION_SHIFT = 12,
+
 	MRTP_PROTOCOL_HEADER_FLAG_COMPRESSED = (1 << 14),
 	MRTP_PROTOCOL_HEADER_FLAG_SENT_TIME = (1 << 15),
 	MRTP_PROTOCOL_HEADER_FLAG_MASK = MRTP_PROTOCOL_HEADER_FLAG_COMPRESSED | MRTP_PROTOCOL_HEADER_FLAG_SENT_TIME,
@@ -70,6 +73,8 @@ typedef struct _MRtpProtocolAcknowledge {
 typedef struct _MRtpProtocolConnect {
 	MRtpProtocolCommandHeader header;
 	mrtp_uint16 outgoingPeerID;
+	mrtp_uint8 incomingSessionID;
+	mrtp_uint8 outgoingSessionID;
 	mrtp_uint32 mtu;
 	mrtp_uint32 windowSize;
 	mrtp_uint32 incomingBandwidth;
@@ -84,6 +89,8 @@ typedef struct _MRtpProtocolConnect {
 typedef struct _MRtpProtocolVerifyConnect {
 	MRtpProtocolCommandHeader header;
 	mrtp_uint16 outgoingPeerID;
+	mrtp_uint8 incomingSessionID;
+	mrtp_uint8 outgoingSessionID;
 	mrtp_uint32 mtu;
 	mrtp_uint32 windowSize;
 	mrtp_uint32 incomingBandwidth;

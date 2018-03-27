@@ -3,6 +3,7 @@
 
 // for debug
 #define SENDANDRECEIVE
+//#define FLOWCONTROL
 
 #ifdef __cplusplus
 extern "C"
@@ -173,6 +174,8 @@ extern "C"
 		mrtp_uint16   outgoingPeerID;
 		mrtp_uint16   incomingPeerID;
 		mrtp_uint32   connectID;
+		mrtp_uint8    outgoingSessionID;
+		mrtp_uint8    incomingSessionID;
 		MRtpAddress   address;            /**< Internet address of the peer */
 		void *        data;               /**< Application private data, may be freely modified */
 		MRtpPeerState state;

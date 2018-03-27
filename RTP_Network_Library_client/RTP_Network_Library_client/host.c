@@ -80,6 +80,7 @@ MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount,
 
 		currentPeer->host = host;
 		currentPeer->incomingPeerID = currentPeer - host->peers;
+		currentPeer->outgoingSessionID = currentPeer->incomingSessionID = 0xFF;
 		currentPeer->data = NULL;
 
 		mrtp_list_clear(&currentPeer->acknowledgements);
@@ -140,6 +141,8 @@ MRtpPeer *mrtp_host_connect(MRtpHost * host, const MRtpAddress * address, mrtp_u
 	command.header.command = MRTP_PROTOCOL_COMMAND_CONNECT | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
 	command.header.channelID = 0xFF;
 	command.connect.outgoingPeerID = MRTP_HOST_TO_NET_16(currentPeer->incomingPeerID);
+	command.connect.incomingSessionID = currentPeer->incomingSessionID;
+	command.connect.outgoingSessionID = currentPeer->outgoingSessionID;
 	command.connect.mtu = MRTP_HOST_TO_NET_32(currentPeer->mtu);
 	command.connect.windowSize = MRTP_HOST_TO_NET_32(currentPeer->windowSize);
 	command.connect.incomingBandwidth = MRTP_HOST_TO_NET_32(host->incomingBandwidth);
@@ -174,13 +177,13 @@ void mrtp_host_destroy(MRtpHost * host) {
 
 void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 
-	mrtp_uint32 timeCurrent = mrtp_time_get(),
-		elapsedTime = timeCurrent - host->bandwidthThrottleEpoch,//距离上次流量控制的时间
-		peersRemaining = (mrtp_uint32)host->connectedPeers,
-		dataTotal = ~0,
-		bandwidth = ~0,
-		throttle = 0,
-		bandwidthLimit = 0;
+	mrtp_uint32 timeCurrent = mrtp_time_get();
+	mrtp_uint32 elapsedTime = timeCurrent - host->bandwidthThrottleEpoch;//距离上次流量控制的时间
+	mrtp_uint32	peersRemaining = (mrtp_uint32)host->connectedPeers;
+	mrtp_uint32 dataTotal = ~0;
+	mrtp_uint32 bandwidth = ~0;
+	mrtp_uint32 throttle = 0;
+	mrtp_uint32 bandwidthLimit = 0;
 	int needsAdjustment = host->bandwidthLimitedPeers > 0 ? 1 : 0;
 	MRtpPeer * peer;
 	MRtpProtocol command;
@@ -194,7 +197,7 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 		return;
 
 	if (host->outgoingBandwidth != 0) {
-		dataTotal = 0;	//peer 的 outgoing data的总和
+		dataTotal = 0;	
 
 		//在全带宽时，在间隔时间内传输的数据量
 		bandwidth = (host->outgoingBandwidth * elapsedTime) / 1000;
@@ -203,7 +206,7 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 			if (peer->state != MRTP_PEER_STATE_CONNECTED && peer->state != MRTP_PEER_STATE_DISCONNECT_LATER)
 				continue;
 
-			dataTotal += peer->outgoingDataTotal;
+			dataTotal += peer->outgoingDataTotal;	//向peer发送的数据
 		}
 	}
 
@@ -211,7 +214,6 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 	while (peersRemaining > 0 && needsAdjustment != 0) {
 		needsAdjustment = 0;
 
-		//throttle = SCALE * bandwidth / (peer)dataTotal，最大是32
 		if (dataTotal <= bandwidth)
 			throttle = MRTP_PEER_PACKET_THROTTLE_SCALE;
 		else
@@ -221,22 +223,21 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 			mrtp_uint32 peerBandwidth;
 
 			if ((peer->state != MRTP_PEER_STATE_CONNECTED &&
-				peer->state != MRTP_PEER_STATE_DISCONNECT_LATER) ||	//peer是连接状态
-				peer->incomingBandwidth == 0 ||						//允许接收数据
+				peer->state != MRTP_PEER_STATE_DISCONNECT_LATER) ||	//保证peer是连接状态
+				peer->incomingBandwidth == 0 ||						//允从接收数据
 				peer->outgoingBandwidthThrottleEpoch == timeCurrent)	//不是刚刚调节过
 				continue;
 
 			peerBandwidth = (peer->incomingBandwidth * elapsedTime) / 1000;	//peer在间隔时间内能接收的最大数据
 
-			//如果 （in coming)peerBandwith / peer->outgoingDataTotal >= bandwith / (peer)dataTotal
-			//如果host发送数据的能力/peer接收的数据的量 大于平均水平时，则暂时不调节
+			// if((peerBandwidth * MRTP_PEER_PACKET_THROTTLE_SCALE)/ peer->outgoingDataTotal >= throttle)
+			// 如果peer接收数据的能力/peer接收的数据量大于host发送数据的能力/host发送的数据量
+			// 即peer接收能力大于平均水平，则不调节
 			if ((throttle * peer->outgoingDataTotal) / MRTP_PEER_PACKET_THROTTLE_SCALE <= peerBandwidth)
 				continue;
 
-			//如果低于平均水平，则将peer->packetThrottleLimit重新计算
-			//否则则按照throttle计算
-			peer->packetThrottleLimit = (peerBandwidth *
-				MRTP_PEER_PACKET_THROTTLE_SCALE) / peer->outgoingDataTotal;
+			// 低于平均水平时
+			peer->packetThrottleLimit = (peerBandwidth * MRTP_PEER_PACKET_THROTTLE_SCALE) / peer->outgoingDataTotal;
 
 			//packThrottleLimit最小值为1
 			if (peer->packetThrottleLimit == 0)
@@ -246,10 +247,8 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 			if (peer->packetThrottle > peer->packetThrottleLimit)
 				peer->packetThrottle = peer->packetThrottleLimit;
 
-			//设置调节的时间
 			peer->outgoingBandwidthThrottleEpoch = timeCurrent;
 
-			//调节过后重置发送接收数据总量
 			peer->incomingDataTotal = 0;
 			peer->outgoingDataTotal = 0;
 
@@ -294,7 +293,7 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 
 		if (bandwidth == 0)
 			bandwidthLimit = 0;
-		else
+		else {
 			while (peersRemaining > 0 && needsAdjustment != 0) {
 				needsAdjustment = 0;
 				//取平均数，会随着循环增大
@@ -306,8 +305,7 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 						peer->incomingBandwidthThrottleEpoch == timeCurrent)	//之前没有处理过
 						continue;
 
-					if (peer->outgoingBandwidth > 0 &&
-						peer->outgoingBandwidth >= bandwidthLimit)
+					if (peer->outgoingBandwidth > 0 && peer->outgoingBandwidth >= bandwidthLimit)
 						continue;
 					//将outgoingBandwidth小于平均水平的peer标记出来
 					peer->incomingBandwidthThrottleEpoch = timeCurrent;
@@ -317,22 +315,22 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 					bandwidth -= peer->outgoingBandwidth;
 				}
 			}
+		}
 
 		for (peer = host->peers; peer < &host->peers[host->peerCount]; ++peer) {
 
 			if (peer->state != MRTP_PEER_STATE_CONNECTED && peer->state != MRTP_PEER_STATE_DISCONNECT_LATER)
 				continue;
 
-			//发送给peer的command
+			//向带宽大于平均水平的peer发送流量控制命令
 			command.header.command = MRTP_PROTOCOL_COMMAND_BANDWIDTH_LIMIT | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
 			command.header.channelID = 0xFF;	//标记响应channel(realiable)
 			command.bandwidthLimit.outgoingBandwidth = MRTP_HOST_TO_NET_32(host->outgoingBandwidth);
 
-			//如果之前标记过，即小于平均水平的peer
+			// 将超过平均水平的设置为平均水平，否则不变，发送带宽控制命令
 			if (peer->incomingBandwidthThrottleEpoch == timeCurrent)
 				command.bandwidthLimit.incomingBandwidth = MRTP_HOST_TO_NET_32(peer->outgoingBandwidth);
 			else
-				//没处理过的统一设置为 bandwidthlimit
 				command.bandwidthLimit.incomingBandwidth = MRTP_HOST_TO_NET_32(bandwidthLimit);
 
 			//设置发送给peer的command，并将该command添加到peer的command处理队列中

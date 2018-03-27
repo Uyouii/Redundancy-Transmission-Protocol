@@ -128,7 +128,7 @@ static void mrtp_protocol_notify_disconnect(MRtpHost * host, MRtpPeer * peer, MR
 
 		mrtp_peer_reset(peer);
 	}
-	else {
+	else {	
 		peer->eventData = 0;
 		mrtp_protocol_dispatch_state(host, peer, MRTP_PEER_STATE_ZOMBIE);
 	}
@@ -148,7 +148,6 @@ static void mrtp_protocol_notify_connect(MRtpHost * host, MRtpPeer * peer, MRtpE
 	else
 		mrtp_protocol_dispatch_state(host, peer, peer->state == MRTP_PEER_STATE_CONNECTING ? MRTP_PEER_STATE_CONNECTION_SUCCEEDED : MRTP_PEER_STATE_CONNECTION_PENDING);
 }
-
 
 // 检测peer->sentReliable队列中的所有command是否超时
 // 如果超时则判断是否断开连接或者重发该包
@@ -426,6 +425,8 @@ static int mrtp_protocol_send_outgoing_commands(MRtpHost * host, MRtpEvent * eve
 			}
 			else host->buffers->dataLength = (size_t) & ((MRtpProtocolHeader *)0)->sentTime;
 
+			if (currentPeer->outgoingPeerID < MRTP_PROTOCOL_MAXIMUM_PEER_ID)
+				host->headerFlags |= currentPeer->outgoingSessionID << MRTP_PROTOCOL_HEADER_SESSION_SHIFT;
 			header->peerID = MRTP_HOST_TO_NET_16(currentPeer->outgoingPeerID | host->headerFlags);
 
 			currentPeer->lastSendTime = host->serviceTime;
@@ -475,7 +476,7 @@ static int mrtp_protocol_dispatch_incoming_commands(MRtpHost * host, MRtpEvent *
 			event->data = peer->eventData;
 
 			return 1;
-			//如果peer的状态为无响应，则事件类型为断开连接，并将peer重置
+		//如果peer的状态为无响应，则事件类型为断开连接，并将peer重置
 		case MRTP_PEER_STATE_ZOMBIE:
 			host->recalculateBandwidthLimits = 1; //需要重新计算带宽，将该peer断开连接重置
 
@@ -607,7 +608,9 @@ static int mrtp_protocol_handle_acknowledge(MRtpHost * host, MRtpEvent * event,
 //为host初始化一个peer
 //处理连接请求，如果连接成功则将连接确认的command（verify command）移动到outgoing队列
 //为host创建一个新的peer对象处理该连接
-static MRtpPeer * mrtp_protocol_handle_connect(MRtpHost * host, MRtpProtocolHeader * header, MRtpProtocol * command) {
+static MRtpPeer * mrtp_protocol_handle_connect(MRtpHost * host, MRtpProtocolHeader * header, MRtpProtocol * command) 
+{
+	mrtp_uint8 incomingSessionID, outgoingSessionID;
 	mrtp_uint32 mtu, windowSize;
 	MRtpChannel * channel;
 	size_t duplicatePeers = 0;
@@ -651,6 +654,17 @@ static MRtpPeer * mrtp_protocol_handle_connect(MRtpHost * host, MRtpProtocolHead
 	peer->packetThrottleDeceleration = MRTP_NET_TO_HOST_32(command->connect.packetThrottleDeceleration);
 	peer->eventData = MRTP_NET_TO_HOST_32(command->connect.data);
 
+	incomingSessionID = command->connect.incomingSessionID == 0xFF ? peer->outgoingSessionID : command->connect.incomingSessionID;
+	incomingSessionID = (incomingSessionID + 1) & (MRTP_PROTOCOL_HEADER_SESSION_MASK >> MRTP_PROTOCOL_HEADER_SESSION_SHIFT);
+	if(incomingSessionID == peer->outgoingSessionID)
+		incomingSessionID = (incomingSessionID + 1) & (MRTP_PROTOCOL_HEADER_SESSION_MASK >> MRTP_PROTOCOL_HEADER_SESSION_SHIFT);
+	peer->outgoingSessionID = incomingSessionID;
+
+	outgoingSessionID = command->connect.outgoingSessionID == 0xFF ? peer->incomingSessionID : command->connect.outgoingSessionID;
+	outgoingSessionID = (outgoingSessionID + 1) & (MRTP_PROTOCOL_HEADER_SESSION_MASK >> MRTP_PROTOCOL_HEADER_SESSION_SHIFT);
+	if (outgoingSessionID == peer->incomingSessionID)
+		outgoingSessionID = (outgoingSessionID + 1) & (MRTP_PROTOCOL_HEADER_SESSION_MASK >> MRTP_PROTOCOL_HEADER_SESSION_SHIFT);
+	peer->incomingSessionID = outgoingSessionID;
 
 	for (channel = peer->channels; channel < &peer->channels[channelCount]; ++channel) {
 		channel->outgoingReliableSequenceNumber = 0;
@@ -702,6 +716,8 @@ static MRtpPeer * mrtp_protocol_handle_connect(MRtpHost * host, MRtpProtocolHead
 	verifyCommand.header.command = MRTP_PROTOCOL_COMMAND_VERIFY_CONNECT | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
 	verifyCommand.header.channelID = 0xFF;
 	verifyCommand.verifyConnect.outgoingPeerID = MRTP_HOST_TO_NET_16(peer->incomingPeerID);
+	verifyCommand.verifyConnect.incomingSessionID = incomingSessionID;
+	verifyCommand.verifyConnect.outgoingSessionID = outgoingSessionID;
 	verifyCommand.verifyConnect.mtu = MRTP_HOST_TO_NET_32(peer->mtu);
 	verifyCommand.verifyConnect.windowSize = MRTP_HOST_TO_NET_32(windowSize);
 	verifyCommand.verifyConnect.incomingBandwidth = MRTP_HOST_TO_NET_32(host->incomingBandwidth);
@@ -746,6 +762,8 @@ static int mrtp_protocol_handle_verify_connect(MRtpHost * host, MRtpEvent * even
 	mrtp_protocol_remove_sent_reliable_command(peer, 1, 0xFF);
 
 	peer->outgoingPeerID = MRTP_NET_TO_HOST_16(command->verifyConnect.outgoingPeerID);
+	peer->incomingSessionID = command->verifyConnect.incomingSessionID;
+	peer->outgoingSessionID = command->verifyConnect.outgoingSessionID;
 
 	mtu = MRTP_NET_TO_HOST_32(command->verifyConnect.mtu);
 
@@ -898,6 +916,62 @@ static int mrtp_protocol_handle_ping(MRtpHost * host, MRtpPeer * peer, const MRt
 	return 0;
 }
 
+static int mrtp_protocol_handle_bandwidth_limit(MRtpHost * host, MRtpPeer * peer, const MRtpProtocol * command) {
+
+	if (peer->state != MRTP_PEER_STATE_CONNECTED && peer->state != MRTP_PEER_STATE_DISCONNECT_LATER)
+		return -1;
+
+	if (peer->incomingBandwidth != 0)
+		--host->bandwidthLimitedPeers;
+
+	peer->incomingBandwidth = MRTP_NET_TO_HOST_32(command->bandwidthLimit.incomingBandwidth);
+	peer->outgoingBandwidth = MRTP_NET_TO_HOST_32(command->bandwidthLimit.outgoingBandwidth);
+
+	if (peer->incomingBandwidth != 0)
+		++host->bandwidthLimitedPeers;
+
+	if (peer->incomingBandwidth == 0 && host->outgoingBandwidth == 0)
+		peer->windowSize = MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE;
+	else
+		if (peer->incomingBandwidth == 0 || host->outgoingBandwidth == 0)
+			peer->windowSize = (MRTP_MAX(peer->incomingBandwidth, host->outgoingBandwidth) /
+				MRTP_PEER_WINDOW_SIZE_SCALE) * MRTP_PROTOCOL_MINIMUM_WINDOW_SIZE;
+		else
+			peer->windowSize = (MRTP_MIN(peer->incomingBandwidth, host->outgoingBandwidth) /
+				MRTP_PEER_WINDOW_SIZE_SCALE) * MRTP_PROTOCOL_MINIMUM_WINDOW_SIZE;
+
+	if (peer->windowSize < MRTP_PROTOCOL_MINIMUM_WINDOW_SIZE)
+		peer->windowSize = MRTP_PROTOCOL_MINIMUM_WINDOW_SIZE;
+	else
+		if (peer->windowSize > MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE)
+			peer->windowSize = MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE;
+
+	return 0;
+}
+
+static int mrtp_protocol_handle_send_reliable(MRtpHost * host, MRtpPeer * peer, const MRtpProtocol * command, 
+	mrtp_uint8 ** currentData)
+{
+	size_t dataLength;
+
+	if (command->header.channelID >= peer->channelCount ||
+		(peer->state != MRTP_PEER_STATE_CONNECTED && peer->state != MRTP_PEER_STATE_DISCONNECT_LATER))
+		return -1;
+
+	dataLength = MRTP_NET_TO_HOST_16(command->sendReliable.dataLength);
+	*currentData += dataLength;
+	if (dataLength > host->maximumPacketSize ||
+		*currentData < host->receivedData ||
+		*currentData > & host->receivedData[host->receivedDataLength])
+		return -1;
+
+	if (mrtp_peer_queue_incoming_command(peer, command, (const mrtp_uint8 *)command + sizeof(MRtpProtocolSendReliable), 
+		dataLength, MRTP_PACKET_FLAG_RELIABLE, 0) == NULL)
+		return -1;
+
+	return 0;
+}
+
 static int mrtp_protocol_handle_incoming_commands(MRtpHost * host, MRtpEvent * event) {
 	MRtpProtocolHeader * header;
 	MRtpProtocol * command;
@@ -905,6 +979,7 @@ static int mrtp_protocol_handle_incoming_commands(MRtpHost * host, MRtpEvent * e
 	mrtp_uint8 * currentData;
 	size_t headerSize;
 	mrtp_uint16 peerID, flags;
+	mrtp_uint8 sessionID;
 
 	if (host->receivedDataLength < (size_t) & ((MRtpProtocolHeader *)0)->sentTime)
 		return 0;
@@ -913,13 +988,11 @@ static int mrtp_protocol_handle_incoming_commands(MRtpHost * host, MRtpEvent * e
 
 
 	peerID = MRTP_NET_TO_HOST_16(header->peerID);
+	sessionID = (peerID & MRTP_PROTOCOL_HEADER_SESSION_MASK) >> MRTP_PROTOCOL_HEADER_SESSION_SHIFT;
 	flags = peerID & MRTP_PROTOCOL_HEADER_FLAG_MASK;
-	//peerID &= ~(MRTP_PROTOCOL_HEADER_FLAG_MASK);
-	peerID &= MRTP_PROTOCOL_MAXIMUM_PEER_ID;
-
+	peerID &= ~(MRTP_PROTOCOL_HEADER_FLAG_MASK | MRTP_PROTOCOL_HEADER_SESSION_MASK);
 
 	headerSize = (flags & MRTP_PROTOCOL_HEADER_FLAG_SENT_TIME ? sizeof(MRtpProtocolHeader) : (size_t) & ((MRtpProtocolHeader *)0)->sentTime);
-
 
 	if (peerID == MRTP_PROTOCOL_MAXIMUM_PEER_ID)
 		peer = NULL;
@@ -933,7 +1006,9 @@ static int mrtp_protocol_handle_incoming_commands(MRtpHost * host, MRtpEvent * e
 		if (peer->state == MRTP_PEER_STATE_DISCONNECTED || peer->state == MRTP_PEER_STATE_ZOMBIE ||
 			((host->receivedAddress.host != peer->address.host ||
 				host->receivedAddress.port != peer->address.port) &&
-				peer->address.host != MRTP_HOST_BROADCAST))
+				peer->address.host != MRTP_HOST_BROADCAST) ||
+				(peer->outgoingPeerID < MRTP_PROTOCOL_MAXIMUM_PEER_ID &&
+					sessionID != peer->incomingSessionID))
 			return 0;
 	}
 
@@ -1005,21 +1080,23 @@ static int mrtp_protocol_handle_incoming_commands(MRtpHost * host, MRtpEvent * e
 			if (mrtp_protocol_handle_ping(host, peer, command))
 				goto commandError;
 			break;
-			/*
-			case MRTP_PROTOCOL_COMMAND_SEND_RELIABLE:
-			if (mrtp_protocol_handle_send_reliable(host, peer, command, &currentData))
-			goto commandError;
-			break;
 
-			case MRTP_PROTOCOL_COMMAND_SEND_FRAGMENT:
-			if (mrtp_protocol_handle_send_fragment(host, peer, command, &currentData))
-			goto commandError;
-			break;
-
-			case MRTP_PROTOCOL_COMMAND_BANDWIDTH_LIMIT:
+		case MRTP_PROTOCOL_COMMAND_BANDWIDTH_LIMIT:
 			if (mrtp_protocol_handle_bandwidth_limit(host, peer, command))
-			goto commandError;
+				goto commandError;
 			break;
+
+		//case MRTP_PROTOCOL_COMMAND_SEND_RELIABLE:
+		//	if (mrtp_protocol_handle_send_reliable(host, peer, command, &currentData))
+		//		goto commandError;
+		//	break;
+
+		//case MRTP_PROTOCOL_COMMAND_SEND_FRAGMENT:
+		//	if (mrtp_protocol_handle_send_fragment(host, peer, command, &currentData))
+		//		goto commandError;
+		//	break;
+			
+		/*	
 
 			case MRTP_PROTOCOL_COMMAND_THROTTLE_CONFIGURE:
 			if (mrtp_protocol_handle_throttle_configure(host, peer, command))
@@ -1137,9 +1214,9 @@ int mrtp_host_service(MRtpHost * host, MRtpEvent * event, mrtp_uint32 timeout) {
 
 	do {
 		//距离上次做流量控制经过的时间大于1秒，则进行流量控制
-		//if (MRTP_TIME_DIFFERENCE(host->serviceTime, host->bandwidthThrottleEpoch) >= 
-		//	MRTP_HOST_BANDWIDTH_THROTTLE_INTERVAL)
-		//	mrtp_host_bandwidth_throttle(host);
+		if (MRTP_TIME_DIFFERENCE(host->serviceTime, host->bandwidthThrottleEpoch) >= 
+			MRTP_HOST_BANDWIDTH_THROTTLE_INTERVAL)
+			mrtp_host_bandwidth_throttle(host);
 
 		//如果遇到event，则返回
 		//将与host相连的peer中的所有outgoingcommand发送出去
