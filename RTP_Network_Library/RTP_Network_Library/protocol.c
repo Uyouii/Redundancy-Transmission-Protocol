@@ -187,12 +187,16 @@ static int mrtp_protocol_check_timeouts(MRtpHost * host, MRtpPeer * peer, MRtpEv
 		//接下来是丢包的情况
 		if (outgoingCommand->packet != NULL)
 			peer->reliableDataInTransit -= outgoingCommand->fragmentLength;
-
 		++peer->packetsLost;
 
-		//该command的roundTripTimeout的超时检测时间增加1倍
 		outgoingCommand->roundTripTimeout *= 2;
-		//重新把这个命令插入到发送队列（重发）
+
+#ifdef PACKETLOSSDEBUG
+		printf("seqnum [%d] Loss! change rto to: [%d]\n",
+			MRTP_NET_TO_HOST_16(outgoingCommand->command.header.reliableSequenceNumber),
+			outgoingCommand->roundTripTimeout);
+#endif // PACKETLOSSDEBUG
+
 		mrtp_list_insert(insertPosition, mrtp_list_remove(&outgoingCommand->outgoingCommandList));
 
 		if (currentCommand == mrtp_list_begin(&peer->sentReliableCommands) &&
@@ -1295,7 +1299,6 @@ int mrtp_host_service(MRtpHost * host, MRtpEvent * event, mrtp_uint32 timeout) {
 		event->peer = NULL;
 		event->packet = NULL;
 
-		//检测此时host中有无待处理的事件
 		switch (mrtp_protocol_dispatch_incoming_commands(host, event)) {
 
 		case 1:
@@ -1308,13 +1311,13 @@ int mrtp_host_service(MRtpHost * host, MRtpEvent * event, mrtp_uint32 timeout) {
 			break;
 		}
 	}
-	//设置服务器此时的时间
+
 	host->serviceTime = mrtp_time_get();
 	timeout += host->serviceTime;
 
 	do {
 		//距离上次做流量控制经过的时间大于1秒，则进行流量控制
-		if (MRTP_TIME_DIFFERENCE(host->serviceTime, host->bandwidthThrottleEpoch) >=
+		if (MRTP_TIME_DIFFERENCE(host->serviceTime, host->bandwidthThrottleEpoch) >= 
 			MRTP_HOST_BANDWIDTH_THROTTLE_INTERVAL)
 			mrtp_host_bandwidth_throttle(host);
 

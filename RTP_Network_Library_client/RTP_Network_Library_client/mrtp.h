@@ -4,7 +4,8 @@
 // for debug
 //#define SENDANDRECEIVE
 //#define FLOWCONTROLDEBUG
-#define RELIABLEWINDOWDEBUG
+//#define RELIABLEWINDOWDEBUG
+#define PACKETLOSSDEBUG
 
 #ifdef __cplusplus
 extern "C"

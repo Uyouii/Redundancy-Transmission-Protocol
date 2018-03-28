@@ -187,12 +187,16 @@ static int mrtp_protocol_check_timeouts(MRtpHost * host, MRtpPeer * peer, MRtpEv
 		//接下来是丢包的情况
 		if (outgoingCommand->packet != NULL)
 			peer->reliableDataInTransit -= outgoingCommand->fragmentLength;
-
 		++peer->packetsLost;
 
-		//该command的roundTripTimeout的超时检测时间增加1倍
 		outgoingCommand->roundTripTimeout *= 2;
-		//重新把这个命令插入到发送队列（重发）
+
+#ifdef PACKETLOSSDEBUG
+		printf("seqnum [%d] Loss! change rto to: [%d]\n", 
+			MRTP_NET_TO_HOST_16(outgoingCommand->command.header.reliableSequenceNumber),
+			outgoingCommand->roundTripTimeout);
+#endif // PACKETLOSSDEBUG
+
 		mrtp_list_insert(insertPosition, mrtp_list_remove(&outgoingCommand->outgoingCommandList));
 
 		if (currentCommand == mrtp_list_begin(&peer->sentReliableCommands) &&

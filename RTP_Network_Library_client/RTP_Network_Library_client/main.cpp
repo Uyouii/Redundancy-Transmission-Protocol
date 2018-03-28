@@ -5,7 +5,8 @@
 #include<string>
 #include<iostream>
 
-#define SERVERADDRESS "10.242.3.221"
+#define SERVERADDRESS "10.240.66.57"
+//#define SERVERADDRESS "10.242.3.221"
 
 MRtpHost* createClient() {
 	MRtpHost * client;

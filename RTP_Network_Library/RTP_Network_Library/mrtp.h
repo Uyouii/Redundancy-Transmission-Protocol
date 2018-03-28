@@ -2,9 +2,10 @@
 #define _MRTP_H_
 
 // for debug
-#define SENDANDRECEIVE
+//#define SENDANDRECEIVE
 //#define FLOWCONTROLDEBUG
-#define RELIABLEWINDOWDEBUG
+//#define RELIABLEWINDOWDEBUG
+#define PACKETLOSSDEBUG
 
 #ifdef __cplusplus
 extern "C"
