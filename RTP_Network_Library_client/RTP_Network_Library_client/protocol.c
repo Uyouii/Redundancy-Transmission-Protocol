@@ -231,7 +231,6 @@ static int mrtp_protocol_send_reliable_outgoing_commands(MRtpHost * host, MRtpPe
 		channel = outgoingCommand->command.header.channelID < peer->channelCount ? &peer->channels[outgoingCommand->command.header.channelID] : NULL;
 		reliableWindow = outgoingCommand->reliableSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
 
-		// 有待研究
 		if (channel != NULL) {
 			if (!windowWrap &&
 				outgoingCommand->sendAttempts < 1 &&	//第一次被发送的sequence number
@@ -241,6 +240,11 @@ static int mrtp_protocol_send_reliable_outgoing_commands(MRtpHost * host, MRtpPe
 					channel->usedReliableWindows & ((((1 << MRTP_PEER_FREE_RELIABLE_WINDOWS) - 1) << reliableWindow) |	// 发送窗口和空闲窗口重叠了
 					(((1 << MRTP_PEER_FREE_RELIABLE_WINDOWS) - 1) >> (MRTP_PEER_RELIABLE_WINDOWS - reliableWindow)))))
 				windowWrap = 1;
+#ifdef RELIABLEWINDOWDEBUG
+			printf("channel: %d,realiableSeqNum: %d, reliableWindow: %d, number in window:[%d]\n",
+				outgoingCommand->command.header.channelID, outgoingCommand->reliableSequenceNumber,reliableWindow,
+				channel->reliableWindows[(reliableWindow + MRTP_PEER_RELIABLE_WINDOWS - 1) % MRTP_PEER_RELIABLE_WINDOWS]);
+#endif
 			if (windowWrap) {
 				currentCommand = mrtp_list_next(currentCommand);
 				continue;
@@ -250,7 +254,6 @@ static int mrtp_protocol_send_reliable_outgoing_commands(MRtpHost * host, MRtpPe
 		//要发送数据的大小超过了总的发送窗口大小的限制
 		if (outgoingCommand->packet != NULL) {
 			if (!windowExceeded) {
-				//packetThrottle原来是用来计算windowSize的
 				mrtp_uint32 windowSize = (peer->packetThrottle * peer->windowSize) / MRTP_PEER_PACKET_THROTTLE_SCALE;
 
 				if (peer->reliableDataInTransit + outgoingCommand->fragmentLength > MRTP_MAX(windowSize, peer->mtu))
@@ -1224,7 +1227,6 @@ static int mrtp_protocol_receive_incoming_commands(MRtpHost * host, MRtpEvent * 
 	return -1;
 }
 
-
 static int mrtp_protocol_dispatch_incoming_commands(MRtpHost * host, MRtpEvent * event) {
 
 	while (!mrtp_list_empty(&host->dispatchQueue)) {
@@ -1283,7 +1285,6 @@ static int mrtp_protocol_dispatch_incoming_commands(MRtpHost * host, MRtpEvent *
 
 	return 0;
 }
-
 
 int mrtp_host_service(MRtpHost * host, MRtpEvent * event, mrtp_uint32 timeout) {
 

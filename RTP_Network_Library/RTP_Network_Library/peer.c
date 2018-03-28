@@ -252,7 +252,7 @@ MRtpAcknowledgement * mrtp_peer_queue_acknowledgement(MRtpPeer * peer, const MRt
 
 //调节peer->packetThrottle
 int mrtp_peer_throttle(MRtpPeer * peer, mrtp_uint32 rtt) {
-	//上次传输的速度非常快
+
 	if (peer->lastRoundTripTime <= peer->lastRoundTripTimeVariance) {
 		peer->packetThrottle = peer->packetThrottleLimit;
 	}

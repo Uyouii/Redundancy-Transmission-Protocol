@@ -2,7 +2,7 @@
 #include <string.h>
 #include "mrtp.h"
 
-MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount, 
+MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount,
 	mrtp_uint32 incomingBandwidth, mrtp_uint32 outgoingBandwidth) {
 
 	MRtpHost * host;
@@ -94,7 +94,7 @@ MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount,
 	return host;
 }
 
-MRtpPeer *mrtp_host_connect(MRtpHost * host, const MRtpAddress * address, mrtp_uint32 data) {
+MRtpPeer *mrtp_host_connect(MRtpHost * host, const MRtpAddress * address) {
 	MRtpPeer * currentPeer;
 	MRtpChannel * channel;
 	MRtpProtocol command;
@@ -125,7 +125,7 @@ MRtpPeer *mrtp_host_connect(MRtpHost * host, const MRtpAddress * address, mrtp_u
 	if (currentPeer->windowSize < MRTP_PROTOCOL_MINIMUM_WINDOW_SIZE)
 		currentPeer->windowSize = MRTP_PROTOCOL_MINIMUM_WINDOW_SIZE;
 	else if (currentPeer->windowSize > MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE)
-			currentPeer->windowSize = MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE;
+		currentPeer->windowSize = MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE;
 
 	for (channel = currentPeer->channels; channel < &currentPeer->channels[MRTP_PROTOCOL_CHANNEL_COUNT]; ++channel) {
 
@@ -151,7 +151,6 @@ MRtpPeer *mrtp_host_connect(MRtpHost * host, const MRtpAddress * address, mrtp_u
 	command.connect.packetThrottleAcceleration = MRTP_HOST_TO_NET_32(currentPeer->packetThrottleAcceleration);
 	command.connect.packetThrottleDeceleration = MRTP_HOST_TO_NET_32(currentPeer->packetThrottleDeceleration);
 	command.connect.connectID = currentPeer->connectID;
-	command.connect.data = MRTP_HOST_TO_NET_32(data);
 
 	mrtp_peer_queue_outgoing_command(currentPeer, &command, NULL, 0, 0);
 
@@ -197,7 +196,7 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 		return;
 
 	if (host->outgoingBandwidth != 0) {
-		dataTotal = 0;	
+		dataTotal = 0;
 
 		//在全带宽时，在间隔时间内传输的数据量
 		bandwidth = (host->outgoingBandwidth * elapsedTime) / 1000;
@@ -230,9 +229,9 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 
 			peerBandwidth = (peer->incomingBandwidth * elapsedTime) / 1000;	//peer在间隔时间内能接收的最大数据
 
-			// if((peerBandwidth * MRTP_PEER_PACKET_THROTTLE_SCALE)/ peer->outgoingDataTotal >= throttle)
-			// 如果peer接收数据的能力/peer接收的数据量大于host发送数据的能力/host发送的数据量
-			// 即peer接收能力大于平均水平，则不调节
+																			// if((peerBandwidth * MRTP_PEER_PACKET_THROTTLE_SCALE)/ peer->outgoingDataTotal >= throttle)
+																			// 如果peer接收数据的能力/peer接收的数据量大于host发送数据的能力/host发送的数据量
+																			// 即peer接收能力大于平均水平，则不调节
 			if ((throttle * peer->outgoingDataTotal) / MRTP_PEER_PACKET_THROTTLE_SCALE <= peerBandwidth)
 				continue;
 
@@ -282,6 +281,16 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 			peer->outgoingDataTotal = 0;
 		}
 	}
+
+#ifdef FLOWCONTROLDEBUG
+	for (int i = 0; i < host->peerCount; i++) {
+		peer = &host->peers[i];
+		printf("peer [%d]: packetThrottleLimit [%d], packetThrottle [%d], incomingBandwidth [%d]\n",
+			i, peer->packetThrottleLimit, peer->packetThrottle, peer->incomingBandwidth);
+	}
+	printf("\n");
+#endif // FLOWCONTROLDEBUG
+
 
 	//如果需要重新计算带宽限制
 	if (host->recalculateBandwidthLimits) {

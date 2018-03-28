@@ -3,7 +3,8 @@
 
 // for debug
 #define SENDANDRECEIVE
-//#define FLOWCONTROL
+//#define FLOWCONTROLDEBUG
+#define RELIABLEWINDOWDEBUG
 
 #ifdef __cplusplus
 extern "C"
@@ -14,7 +15,9 @@ extern "C"
 
 #ifdef _WIN32
 #include "win32.h"
-#endif // _WIN32
+#else
+#include "unix.h"
+#endif
 
 #include "types.h"
 #include "list.h"
@@ -369,13 +372,11 @@ extern "C"
 
 	MRTP_API MRtpHost * mrtp_host_create(const MRtpAddress *, size_t, mrtp_uint32, mrtp_uint32);
 	MRTP_API void       mrtp_host_destroy(MRtpHost *);
-	MRTP_API MRtpPeer * mrtp_host_connect(MRtpHost *, const MRtpAddress *, mrtp_uint32);
+	MRTP_API MRtpPeer * mrtp_host_connect(MRtpHost *, const MRtpAddress *);
 	MRTP_API int        mrtp_host_check_events(MRtpHost *, MRtpEvent *);
 	MRTP_API int        mrtp_host_service(MRtpHost *, MRtpEvent *, mrtp_uint32);
 	MRTP_API void       mrtp_host_flush(MRtpHost *);
 	MRTP_API void       mrtp_host_broadcast(MRtpHost *, mrtp_uint8, MRtpPacket *);
-	//MRTP_API void       mrtp_host_compress(MRtpHost *, const MRtpCompressor *);
-	//MRTP_API int        mrtp_host_compress_with_range_coder(MRtpHost * host);
 	MRTP_API void       mrtp_host_channel_limit(MRtpHost *, size_t);
 	MRTP_API void       mrtp_host_bandwidth_limit(MRtpHost *, mrtp_uint32, mrtp_uint32);
 	extern   void       mrtp_host_bandwidth_throttle(MRtpHost *);

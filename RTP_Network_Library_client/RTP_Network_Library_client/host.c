@@ -283,6 +283,16 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 		}
 	}
 
+#ifdef FLOWCONTROLDEBUG
+	for (int i = 0; i < host->peerCount; i++) {
+		peer = &host->peers[i];
+		printf("peer [%d]: packetThrottleLimit [%d], packetThrottle [%d], incomingBandwidth [%d]\n",
+			i,peer->packetThrottleLimit, peer->packetThrottle,peer->incomingBandwidth);
+	}
+	printf("\n");
+#endif // FLOWCONTROLDEBUG
+
+
 	//如果需要重新计算带宽限制
 	if (host->recalculateBandwidthLimits) {
 		host->recalculateBandwidthLimits = 0;

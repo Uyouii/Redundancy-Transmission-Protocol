@@ -13,9 +13,9 @@ MRtpHost* createServer() {
 
 	server = mrtp_host_create(
 		&address /* the address to bind the server host to */,
-		128      /* allow up to 32 clients and/or outgoing connections */,
-		0      /* assume any amount of incoming bandwidth */,
-		0      /* assume any amount of outgoing bandwidth */
+		8      /* allow up to 32 clients and/or outgoing connections */,
+		100000/8      /* assume any amount of incoming bandwidth */,
+		100000/8      /* assume any amount of outgoing bandwidth */
 	);
 
 	if (server == NULL) {
@@ -49,10 +49,10 @@ int main(int argc, char ** argv) {
 				event.peer->address.port);
 			break;
 		case MRTP_EVENT_TYPE_RECEIVE:
-			printf("A packet of length %u containing %s was received on channel %u.\n",
+			/*printf("A packet of length %u containing %s was received on channel %u.\n",
 				event.packet->dataLength,
 				event.packet->data,
-				event.channelID);
+				event.channelID);*/
 			/* Clean up the packet now that we're done using it. */
 			mrtp_packet_destroy(event.packet);
 			break;

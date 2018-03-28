@@ -130,8 +130,7 @@ typedef struct _MRtpProtocolSendReliable {
 } MRTP_PACKED MRtpProtocolSendReliable;
 
 
-typedef struct _MRtpProtocolSendFragment
-{
+typedef struct _MRtpProtocolSendFragment {
 	MRtpProtocolCommandHeader header;
 	mrtp_uint16 startSequenceNumber;
 	mrtp_uint16 dataLength;
@@ -141,8 +140,7 @@ typedef struct _MRtpProtocolSendFragment
 	mrtp_uint32 fragmentOffset;
 } MRTP_PACKED MRtpProtocolSendFragment;
 
-typedef union _MRtpProtocol
-{
+typedef union _MRtpProtocol {
 	MRtpProtocolCommandHeader header;
 	MRtpProtocolAcknowledge acknowledge;
 	MRtpProtocolConnect connect;

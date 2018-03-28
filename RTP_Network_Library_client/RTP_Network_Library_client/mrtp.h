@@ -2,8 +2,9 @@
 #define _MRTP_H_
 
 // for debug
-#define SENDANDRECEIVE
-//#define FLOWCONTROL
+//#define SENDANDRECEIVE
+//#define FLOWCONTROLDEBUG
+#define RELIABLEWINDOWDEBUG
 
 #ifdef __cplusplus
 extern "C"
@@ -14,7 +15,9 @@ extern "C"
 
 #ifdef _WIN32
 #include "win32.h"
-#endif // _WIN32
+#else
+#include "unix.h"
+#endif
 
 #include "types.h"
 #include "list.h"
