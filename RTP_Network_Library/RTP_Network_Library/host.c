@@ -54,7 +54,6 @@ MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount,
 	host->peerCount = peerCount;
 	host->commandCount = 0;
 	host->bufferCount = 0;
-	host->checksum = NULL;
 	host->receivedAddress.host = MRTP_HOST_ANY;
 	host->receivedAddress.port = 0;
 	host->receivedData = NULL;
@@ -71,7 +70,7 @@ MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount,
 	host->maximumPacketSize = MRTP_HOST_DEFAULT_MAXIMUM_PACKET_SIZE;
 	host->maximumWaitingData = MRTP_HOST_DEFAULT_MAXIMUM_WAITING_DATA;
 
-	host->intercept = NULL;
+	host->redundancyNum = MRTP_PROTOCOL_DEFAULT_REDUNDANCY_NUM;
 
 	mrtp_list_clear(&host->dispatchQueue);
 
@@ -346,4 +345,25 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 			mrtp_peer_queue_outgoing_command(peer, &command, NULL, 0, 0);
 		}
 	}
+}
+
+
+void mrtp_host_bandwidth_limit(MRtpHost * host, mrtp_uint32 incomingBandwidth, mrtp_uint32 outgoingBandwidth)
+{
+	host->incomingBandwidth = incomingBandwidth;
+	host->outgoingBandwidth = outgoingBandwidth;
+	host->recalculateBandwidthLimits = 1;
+}
+
+// don't change redundancy_num when you send a packet
+void mrtp_host_set_redundancy_num(MRtpHost *host, mrtp_uint32 redundancy_num) {
+	if (redundancy_num > MRTP_PROTOCOL_MAXIMUM_REDUNDANCY_NUM) {
+		redundancy_num = MRTP_PROTOCOL_MAXIMUM_REDUNDANCY_NUM;
+	}
+	else if (redundancy_num < MRTP_PROTOCOL_MINIMUM_REDUNDANCY_NUM) {
+		redundancy_num = MRTP_PROTOCOL_MINIMUM_REDUNDANCY_NUM;
+	}
+	host->redundancyNum = redundancy_num;
+
+	
 }

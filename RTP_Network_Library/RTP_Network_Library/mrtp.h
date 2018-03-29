@@ -173,62 +173,70 @@ extern "C"
 		MRtpList     incomingReliableCommands;
 	} MRtpChannel;
 
+	typedef struct _MRtpRedundancyBuffer {
+		size_t length;
+		mrtp_uint8 *data;
+	} MRtpRedundancyBuffer;
+
 	typedef struct _MRtpPeer {
 		MRtpListNode  dispatchList;
 		struct _MRtpHost * host;
-		mrtp_uint16   outgoingPeerID;
-		mrtp_uint16   incomingPeerID;
-		mrtp_uint32   connectID;
-		mrtp_uint8    outgoingSessionID;
-		mrtp_uint8    incomingSessionID;
-		MRtpAddress   address;            /**< Internet address of the peer */
-		void *        data;               /**< Application private data, may be freely modified */
+		mrtp_uint16 outgoingPeerID;
+		mrtp_uint16 incomingPeerID;
+		mrtp_uint32 connectID;
+		mrtp_uint8 outgoingSessionID;
+		mrtp_uint8 incomingSessionID;
+		MRtpAddress address;            /**< Internet address of the peer */
+		void * data;               /**< Application private data, may be freely modified */
 		MRtpPeerState state;
 		MRtpChannel * channels;
-		size_t        channelCount;       /**< Number of channels allocated for communication with peer */
-		mrtp_uint32   incomingBandwidth;  /**< Downstream bandwidth of the client in bytes/second */
-		mrtp_uint32   outgoingBandwidth;  /**< Upstream bandwidth of the client in bytes/second */
-		mrtp_uint32   incomingBandwidthThrottleEpoch;
-		mrtp_uint32   outgoingBandwidthThrottleEpoch;
-		mrtp_uint32   incomingDataTotal;
-		mrtp_uint32   outgoingDataTotal;
-		mrtp_uint32   lastSendTime;
-		mrtp_uint32   lastReceiveTime;
-		mrtp_uint32   nextTimeout;
-		mrtp_uint32   earliestTimeout;
-		mrtp_uint32   packetLossEpoch;
-		mrtp_uint32   packetsSent;
-		mrtp_uint32   packetsLost;
-		mrtp_uint32   packetLoss;          /**< mean packet loss of reliable packets as a ratio with respect to the constant MRTP_PEER_PACKET_LOSS_SCALE */
-		mrtp_uint32   packetLossVariance;
-		mrtp_uint32   packetThrottle;
-		mrtp_uint32   packetThrottleLimit;
-		mrtp_uint32   packetThrottleCounter;
-		mrtp_uint32   packetThrottleEpoch;
-		mrtp_uint32   packetThrottleAcceleration;
-		mrtp_uint32   packetThrottleDeceleration;
-		mrtp_uint32   packetThrottleInterval;
-		mrtp_uint32   pingInterval;
-		mrtp_uint32   timeoutLimit;
-		mrtp_uint32   timeoutMinimum;
-		mrtp_uint32   timeoutMaximum;
-		mrtp_uint32   lastRoundTripTime;
-		mrtp_uint32   lowestRoundTripTime;
-		mrtp_uint32   lastRoundTripTimeVariance;
-		mrtp_uint32   highestRoundTripTimeVariance;
-		mrtp_uint32   roundTripTime;            /**< mean round trip time (RTT), in milliseconds, between sending a reliable packet and receiving its acknowledgement */
-		mrtp_uint32   roundTripTimeVariance;
-		mrtp_uint32   mtu;
-		mrtp_uint32   windowSize;
-		mrtp_uint32   reliableDataInTransit;
-		mrtp_uint16   outgoingReliableSequenceNumber;
-		MRtpList      acknowledgements;
-		MRtpList      sentReliableCommands;
-		MRtpList      outgoingReliableCommands;
-		MRtpList      dispatchedCommands;
-		int           needsDispatch;
-		mrtp_uint32   eventData;
-		size_t        totalWaitingData;
+		size_t channelCount;       /**< Number of channels allocated for communication with peer */
+		mrtp_uint32 incomingBandwidth;  /**< Downstream bandwidth of the client in bytes/second */
+		mrtp_uint32 outgoingBandwidth;  /**< Upstream bandwidth of the client in bytes/second */
+		mrtp_uint32 incomingBandwidthThrottleEpoch;
+		mrtp_uint32 outgoingBandwidthThrottleEpoch;
+		mrtp_uint32 incomingDataTotal;
+		mrtp_uint32 outgoingDataTotal;
+		mrtp_uint32 lastSendTime;
+		mrtp_uint32 lastReceiveTime;
+		mrtp_uint32 nextTimeout;
+		mrtp_uint32 earliestTimeout;
+		mrtp_uint32 packetLossEpoch;
+		mrtp_uint32 packetsSent;
+		mrtp_uint32 packetsLost;
+		mrtp_uint32 packetLoss;          /**< mean packet loss of reliable packets as a ratio with respect to the constant MRTP_PEER_PACKET_LOSS_SCALE */
+		mrtp_uint32 packetLossVariance;
+		mrtp_uint32 packetThrottle;
+		mrtp_uint32 packetThrottleLimit;
+		mrtp_uint32 packetThrottleCounter;
+		mrtp_uint32 packetThrottleEpoch;
+		mrtp_uint32 packetThrottleAcceleration;
+		mrtp_uint32 packetThrottleDeceleration;
+		mrtp_uint32 packetThrottleInterval;
+		mrtp_uint32 pingInterval;
+		mrtp_uint32 timeoutLimit;
+		mrtp_uint32 timeoutMinimum;
+		mrtp_uint32 timeoutMaximum;
+		mrtp_uint32 lastRoundTripTime;
+		mrtp_uint32 lowestRoundTripTime;
+		mrtp_uint32 lastRoundTripTimeVariance;
+		mrtp_uint32 highestRoundTripTimeVariance;
+		mrtp_uint32 roundTripTime;            /**< mean round trip time (RTT), in milliseconds, between sending a reliable packet and receiving its acknowledgement */
+		mrtp_uint32 roundTripTimeVariance;
+		mrtp_uint32 mtu;
+		mrtp_uint32 windowSize;
+		mrtp_uint32 reliableDataInTransit;
+		mrtp_uint16 outgoingReliableSequenceNumber;
+		MRtpList acknowledgements;
+		MRtpList sentReliableCommands;
+		MRtpList outgoingReliableCommands;
+		MRtpList dispatchedCommands;
+		int needsDispatch;
+		mrtp_uint32 eventData;
+		size_t totalWaitingData;
+		size_t currentRedundancyBufferNum;
+		size_t redundancyNum;
+		MRtpRedundancyBuffer* redundancyBuffers;
 	} MRtpPeer;
 
 	/** Callback that computes the checksum of the data held in buffers[0:bufferCount-1] */
@@ -239,40 +247,39 @@ extern "C"
 	typedef int (MRTP_CALLBACK * MRtpInterceptCallback) (struct _MRtpHost * host, struct _MRtpEvent * event);
 
 	typedef struct _MRtpHost {
-		MRtpSocket           socket;
-		MRtpAddress          address;                     /**< Internet address of the host */
-		mrtp_uint32          incomingBandwidth;           /**< downstream bandwidth of the host */
-		mrtp_uint32          outgoingBandwidth;           /**< upstream bandwidth of the host */
-		mrtp_uint32          bandwidthThrottleEpoch;
-		mrtp_uint32          mtu;
-		mrtp_uint32          randomSeed;
-		int                  recalculateBandwidthLimits;
-		MRtpPeer *           peers;                       /**< array of peers allocated for this host */
-		size_t               peerCount;                   /**< number of peers allocated for this host */
-		mrtp_uint32          serviceTime;
-		MRtpList             dispatchQueue;
-		int                  continueSending;
-		size_t               packetSize;
-		mrtp_uint16          headerFlags;
-		MRtpProtocol         commands[MRTP_PROTOCOL_MAXIMUM_PACKET_COMMANDS];
-		size_t               commandCount;
-		MRtpBuffer           buffers[MRTP_BUFFER_MAXIMUM];
-		size_t               bufferCount;
-		MRtpChecksumCallback checksum;                    /**<回调函数指针 callback the user can set to enable packet checksums for this host */
-		mrtp_uint8           packetData[2][MRTP_PROTOCOL_MAXIMUM_MTU];
-		MRtpAddress          receivedAddress;
-		mrtp_uint8 *         receivedData;
-		size_t               receivedDataLength;
-		mrtp_uint32          totalSentData;               /**< total data sent, user should reset to 0 as needed to prevent overflow */
-		mrtp_uint32          totalSentPackets;            /**< total UDP packets sent, user should reset to 0 as needed to prevent overflow */
-		mrtp_uint32          totalReceivedData;           /**< total data received, user should reset to 0 as needed to prevent overflow */
-		mrtp_uint32          totalReceivedPackets;        /**< total UDP packets received, user should reset to 0 as needed to prevent overflow */
-		MRtpInterceptCallback intercept;                  /**< 回调函数指针 callback the user can set to intercept received raw UDP packets */
-		size_t               connectedPeers;
-		size_t               bandwidthLimitedPeers;
-		size_t               duplicatePeers;              /**< optional number of allowed peers from duplicate IPs, defaults to MRTP_PROTOCOL_MAXIMUM_PEER_ID */
-		size_t               maximumPacketSize;           /**< the maximum allowable packet size that may be sent or received on a peer */
-		size_t               maximumWaitingData;          /**< the maximum aggregate amount of buffer space a peer may use waiting for packets to be delivered */
+		MRtpSocket socket;
+		MRtpAddress address;                     /**< Internet address of the host */
+		mrtp_uint32 incomingBandwidth;           /**< downstream bandwidth of the host */
+		mrtp_uint32 outgoingBandwidth;           /**< upstream bandwidth of the host */
+		mrtp_uint32 bandwidthThrottleEpoch;
+		mrtp_uint32  mtu;
+		mrtp_uint32 randomSeed;
+		int recalculateBandwidthLimits;
+		MRtpPeer * peers;                       /**< array of peers allocated for this host */
+		size_t peerCount;                   /**< number of peers allocated for this host */
+		mrtp_uint32 serviceTime;
+		MRtpList dispatchQueue;
+		int continueSending;
+		size_t packetSize;
+		mrtp_uint16 headerFlags;
+		MRtpProtocol commands[MRTP_PROTOCOL_MAXIMUM_PACKET_COMMANDS];
+		size_t commandCount;
+		MRtpBuffer buffers[MRTP_BUFFER_MAXIMUM];
+		size_t bufferCount;
+		mrtp_uint8 packetData[2][MRTP_PROTOCOL_MAXIMUM_MTU];
+		MRtpAddress receivedAddress;
+		mrtp_uint8 *receivedData;
+		size_t receivedDataLength;
+		mrtp_uint32 totalSentData;               /**< total data sent, user should reset to 0 as needed to prevent overflow */
+		mrtp_uint32 totalSentPackets;            /**< total UDP packets sent, user should reset to 0 as needed to prevent overflow */
+		mrtp_uint32 totalReceivedData;           /**< total data received, user should reset to 0 as needed to prevent overflow */
+		mrtp_uint32 totalReceivedPackets;        /**< total UDP packets received, user should reset to 0 as needed to prevent overflow */
+		size_t connectedPeers;
+		size_t bandwidthLimitedPeers;
+		size_t duplicatePeers;              /**< optional number of allowed peers from duplicate IPs, defaults to MRTP_PROTOCOL_MAXIMUM_PEER_ID */
+		size_t maximumPacketSize;           /**< the maximum allowable packet size that may be sent or received on a peer */
+		size_t maximumWaitingData;          /**< the maximum aggregate amount of buffer space a peer may use waiting for packets to be delivered */
+		mrtp_uint8 redundancyNum;
 	} MRtpHost;
 
 	/**
@@ -282,26 +289,10 @@ extern "C"
 		/** no event occurred within the specified time limit */
 		MRTP_EVENT_TYPE_NONE = 0,
 
-		/** a connection request initiated by mrtp_host_connect has completed.
-		* The peer field contains the peer which successfully connected.
-		*/
 		MRTP_EVENT_TYPE_CONNECT = 1,
 
-		/** a peer has disconnected.  This event is generated on a successful
-		* completion of a disconnect initiated by mrtp_pper_disconnect, if
-		* a peer has timed out, or if a connection request intialized by
-		* mrtp_host_connect has timed out.  The peer field contains the peer
-		* which disconnected. The data field contains user supplied data
-		* describing the disconnection, or 0, if none is available.
-		*/
 		MRTP_EVENT_TYPE_DISCONNECT = 2,
 
-		/** a packet has been received from a peer.  The peer field specifies the
-		* peer which sent the packet.  The channelID field specifies the channel
-		* number upon which the packet was received.  The packet field contains
-		* the packet that was received; this packet must be destroyed with
-		* mrtp_packet_destroy after use.
-		*/
 		MRTP_EVENT_TYPE_RECEIVE = 3
 	} MRtpEventType;
 
@@ -402,14 +393,9 @@ extern "C"
 	extern void                  mrtp_peer_dispatch_incoming_reliable_commands(MRtpPeer *, MRtpChannel *);
 	extern void                  mrtp_peer_on_connect(MRtpPeer *);
 	extern void                  mrtp_peer_on_disconnect(MRtpPeer *);
-
-	MRTP_API void * mrtp_range_coder_create(void);
-	MRTP_API void   mrtp_range_coder_destroy(void *);
-	MRTP_API size_t mrtp_range_coder_compress(void *, const MRtpBuffer *, size_t, size_t, mrtp_uint8 *, size_t);
-	MRTP_API size_t mrtp_range_coder_decompress(void *, const mrtp_uint8 *, size_t, mrtp_uint8 *, size_t);
+	void mrtp_peer_reset_reduandancy_buffer(MRtpPeer* peer, size_t redundancyNum);
 
 	extern size_t mrtp_protocol_command_size(mrtp_uint8);
-
 
 
 #ifdef __cplusplus

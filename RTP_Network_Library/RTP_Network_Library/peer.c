@@ -154,7 +154,7 @@ void mrtp_peer_reset(MRtpPeer * peer) {
 	peer->eventData = 0;
 	peer->totalWaitingData = 0;
 
-
+	mrtp_peer_reset_reduandancy_buffer(peer, MRTP_PROTOCOL_DEFAULT_REDUNDANCY_NUM);
 	mrtp_peer_reset_queues(peer);
 }
 
@@ -366,6 +366,17 @@ MRtpPacket * mrtp_peer_receive(MRtpPeer * peer, mrtp_uint8 * channelID) {
 	return packet;
 }
 
+int mrtp_peer_send_redundancy(MRtpPeer* peer, MRtpPacket* packet) {
+	if (peer->state != MRTP_PEER_STATE_CONNECTED || packet->dataLength > peer->host->maximumPacketSize)
+		return -1;
+
+	MRtpChannel *channel = &peer->channels[MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM];
+	MRtpProtocol command;
+	size_t fragementLength;
+
+	fragementLength = peer->mtu - sizeof(MRtpProtocolHeader);
+}
+
 int mrtp_peer_send_reliable(MRtpPeer * peer, MRtpPacket * packet) {
 
 	if (peer->state != MRTP_PEER_STATE_CONNECTED || packet->dataLength > peer->host->maximumPacketSize)
@@ -376,8 +387,6 @@ int mrtp_peer_send_reliable(MRtpPeer * peer, MRtpPacket * packet) {
 	size_t fragmentLength;
 
 	fragmentLength = peer->mtu - sizeof(MRtpProtocolHeader) - sizeof(MRtpProtocolSendFragment);
-	if (peer->host->checksum != NULL)
-		fragmentLength -= sizeof(mrtp_uint32);
 
 	// 如果需要分片
 	if (packet->dataLength > fragmentLength) {
@@ -611,5 +620,40 @@ void mrtp_peer_dispatch_incoming_reliable_commands(MRtpPeer * peer, MRtpChannel 
 		mrtp_list_insert(mrtp_list_end(&peer->host->dispatchQueue), &peer->dispatchList);
 
 		peer->needsDispatch = 1;
+	}
+}
+
+void mrtp_peer_reset_reduandancy_buffer(MRtpPeer* peer, size_t redundancyNum) {
+
+	if (redundancyNum > MRTP_PROTOCOL_MAXIMUM_REDUNDANCY_NUM)
+		redundancyNum = MRTP_PROTOCOL_MAXIMUM_REDUNDANCY_NUM;
+	else if (redundancyNum < MRTP_PROTOCOL_MINIMUM_REDUNDANCY_NUM)
+		redundancyNum = MRTP_PROTOCOL_MINIMUM_REDUNDANCY_NUM;
+
+	if (redundancyNum == peer->redundancyNum) {
+		peer->currentRedundancyBufferNum = 0;
+		for (int i = 0; i < redundancyNum; i++) {
+			peer->redundancyBuffers->length = 0;
+		}
+	}
+	else if (peer->redundancyBuffers != NULL) {
+		for (int i = 0; i < peer->redundancyNum; i++) {
+			mrtp_free(peer->redundancyBuffers[i].data);
+		}
+		mrtp_free(peer->redundancyBuffers);
+		peer->redundancyNum = redundancyNum;
+		peer->redundancyBuffers = mrtp_malloc(peer->redundancyNum * sizeof(MRtpRedundancyBuffer));
+		for (int i = 0; i < peer->redundancyNum; i++) {
+			peer->redundancyBuffers[i].length = 0;
+			peer->redundancyBuffers[i].data = mrtp_malloc(peer->host->mtu);
+		}
+	}
+	else {
+		peer->redundancyNum = redundancyNum;
+		peer->redundancyBuffers = mrtp_malloc(peer->redundancyNum * sizeof(MRtpRedundancyBuffer));
+		for (int i = 0; i < peer->redundancyNum; i++) {
+			peer->redundancyBuffers[i].length = 0;
+			peer->redundancyBuffers[i].data = mrtp_malloc(peer->host->mtu);
+		}
 	}
 }
