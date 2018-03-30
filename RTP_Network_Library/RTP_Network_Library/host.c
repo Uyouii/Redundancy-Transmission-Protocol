@@ -84,8 +84,11 @@ MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount,
 
 		mrtp_list_clear(&currentPeer->acknowledgements);
 		mrtp_list_clear(&currentPeer->sentReliableCommands);
+		mrtp_list_clear(&currentPeer->sentRedundancyNoAckCommands);
 		mrtp_list_clear(&currentPeer->outgoingReliableCommands);
 		mrtp_list_clear(&currentPeer->dispatchedCommands);
+		mrtp_list_clear(&currentPeer->outgoingRedundancyCommands);
+		mrtp_list_clear(&currentPeer->outgoingRedundancyNoAckCommands);
 
 		mrtp_peer_reset(currentPeer);
 	}
@@ -128,13 +131,13 @@ MRtpPeer *mrtp_host_connect(MRtpHost * host, const MRtpAddress * address) {
 
 	for (channel = currentPeer->channels; channel < &currentPeer->channels[MRTP_PROTOCOL_CHANNEL_COUNT]; ++channel) {
 
-		channel->outgoingReliableSequenceNumber = 0;
-		channel->incomingReliableSequenceNumber = 0;
+		channel->outgoingSequenceNumber = 0;
+		channel->incomingSequenceNumber = 0;
 
-		mrtp_list_clear(&channel->incomingReliableCommands);
+		mrtp_list_clear(&channel->incomingCommands);
 
 		channel->usedReliableWindows = 0;
-		memset(channel->reliableWindows, 0, sizeof(channel->reliableWindows));
+		memset(channel->commandWindows, 0, sizeof(channel->commandWindows));
 	}
 
 	command.header.command = MRTP_PROTOCOL_COMMAND_CONNECT | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
@@ -364,6 +367,4 @@ void mrtp_host_set_redundancy_num(MRtpHost *host, mrtp_uint32 redundancy_num) {
 		redundancy_num = MRTP_PROTOCOL_MINIMUM_REDUNDANCY_NUM;
 	}
 	host->redundancyNum = redundancy_num;
-
-	
 }

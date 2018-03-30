@@ -2,7 +2,7 @@
 #include <string.h>
 #include "mrtp.h"
 
-MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount, 
+MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount,
 	mrtp_uint32 incomingBandwidth, mrtp_uint32 outgoingBandwidth) {
 
 	MRtpHost * host;
@@ -54,7 +54,6 @@ MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount,
 	host->peerCount = peerCount;
 	host->commandCount = 0;
 	host->bufferCount = 0;
-	host->checksum = NULL;
 	host->receivedAddress.host = MRTP_HOST_ANY;
 	host->receivedAddress.port = 0;
 	host->receivedData = NULL;
@@ -71,7 +70,7 @@ MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount,
 	host->maximumPacketSize = MRTP_HOST_DEFAULT_MAXIMUM_PACKET_SIZE;
 	host->maximumWaitingData = MRTP_HOST_DEFAULT_MAXIMUM_WAITING_DATA;
 
-	host->intercept = NULL;
+	host->redundancyNum = MRTP_PROTOCOL_DEFAULT_REDUNDANCY_NUM;
 
 	mrtp_list_clear(&host->dispatchQueue);
 
@@ -85,8 +84,11 @@ MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount,
 
 		mrtp_list_clear(&currentPeer->acknowledgements);
 		mrtp_list_clear(&currentPeer->sentReliableCommands);
+		mrtp_list_clear(&currentPeer->sentRedundancyNoAckCommands);
 		mrtp_list_clear(&currentPeer->outgoingReliableCommands);
 		mrtp_list_clear(&currentPeer->dispatchedCommands);
+		mrtp_list_clear(&currentPeer->outgoingRedundancyCommands);
+		mrtp_list_clear(&currentPeer->outgoingRedundancyNoAckCommands);
 
 		mrtp_peer_reset(currentPeer);
 	}
@@ -94,7 +96,7 @@ MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount,
 	return host;
 }
 
-MRtpPeer *mrtp_host_connect(MRtpHost * host, const MRtpAddress * address, mrtp_uint32 data) {
+MRtpPeer *mrtp_host_connect(MRtpHost * host, const MRtpAddress * address) {
 	MRtpPeer * currentPeer;
 	MRtpChannel * channel;
 	MRtpProtocol command;
@@ -125,17 +127,17 @@ MRtpPeer *mrtp_host_connect(MRtpHost * host, const MRtpAddress * address, mrtp_u
 	if (currentPeer->windowSize < MRTP_PROTOCOL_MINIMUM_WINDOW_SIZE)
 		currentPeer->windowSize = MRTP_PROTOCOL_MINIMUM_WINDOW_SIZE;
 	else if (currentPeer->windowSize > MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE)
-			currentPeer->windowSize = MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE;
+		currentPeer->windowSize = MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE;
 
 	for (channel = currentPeer->channels; channel < &currentPeer->channels[MRTP_PROTOCOL_CHANNEL_COUNT]; ++channel) {
 
-		channel->outgoingReliableSequenceNumber = 0;
-		channel->incomingReliableSequenceNumber = 0;
+		channel->outgoingSequenceNumber = 0;
+		channel->incomingSequenceNumber = 0;
 
-		mrtp_list_clear(&channel->incomingReliableCommands);
+		mrtp_list_clear(&channel->incomingCommands);
 
 		channel->usedReliableWindows = 0;
-		memset(channel->reliableWindows, 0, sizeof(channel->reliableWindows));
+		memset(channel->commandWindows, 0, sizeof(channel->commandWindows));
 	}
 
 	command.header.command = MRTP_PROTOCOL_COMMAND_CONNECT | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
@@ -151,7 +153,6 @@ MRtpPeer *mrtp_host_connect(MRtpHost * host, const MRtpAddress * address, mrtp_u
 	command.connect.packetThrottleAcceleration = MRTP_HOST_TO_NET_32(currentPeer->packetThrottleAcceleration);
 	command.connect.packetThrottleDeceleration = MRTP_HOST_TO_NET_32(currentPeer->packetThrottleDeceleration);
 	command.connect.connectID = currentPeer->connectID;
-	command.connect.data = MRTP_HOST_TO_NET_32(data);
 
 	mrtp_peer_queue_outgoing_command(currentPeer, &command, NULL, 0, 0);
 
@@ -197,7 +198,7 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 		return;
 
 	if (host->outgoingBandwidth != 0) {
-		dataTotal = 0;	
+		dataTotal = 0;
 
 		//在全带宽时，在间隔时间内传输的数据量
 		bandwidth = (host->outgoingBandwidth * elapsedTime) / 1000;
@@ -230,9 +231,9 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 
 			peerBandwidth = (peer->incomingBandwidth * elapsedTime) / 1000;	//peer在间隔时间内能接收的最大数据
 
-			// if((peerBandwidth * MRTP_PEER_PACKET_THROTTLE_SCALE)/ peer->outgoingDataTotal >= throttle)
-			// 如果peer接收数据的能力/peer接收的数据量大于host发送数据的能力/host发送的数据量
-			// 即peer接收能力大于平均水平，则不调节
+																			// if((peerBandwidth * MRTP_PEER_PACKET_THROTTLE_SCALE)/ peer->outgoingDataTotal >= throttle)
+																			// 如果peer接收数据的能力/peer接收的数据量大于host发送数据的能力/host发送的数据量
+																			// 即peer接收能力大于平均水平，则不调节
 			if ((throttle * peer->outgoingDataTotal) / MRTP_PEER_PACKET_THROTTLE_SCALE <= peerBandwidth)
 				continue;
 
@@ -287,7 +288,7 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 	for (int i = 0; i < host->peerCount; i++) {
 		peer = &host->peers[i];
 		printf("peer [%d]: packetThrottleLimit [%d], packetThrottle [%d], incomingBandwidth [%d]\n",
-			i,peer->packetThrottleLimit, peer->packetThrottle,peer->incomingBandwidth);
+			i, peer->packetThrottleLimit, peer->packetThrottle, peer->incomingBandwidth);
 	}
 	printf("\n");
 #endif // FLOWCONTROLDEBUG
@@ -347,4 +348,23 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 			mrtp_peer_queue_outgoing_command(peer, &command, NULL, 0, 0);
 		}
 	}
+}
+
+
+void mrtp_host_bandwidth_limit(MRtpHost * host, mrtp_uint32 incomingBandwidth, mrtp_uint32 outgoingBandwidth)
+{
+	host->incomingBandwidth = incomingBandwidth;
+	host->outgoingBandwidth = outgoingBandwidth;
+	host->recalculateBandwidthLimits = 1;
+}
+
+// don't change redundancy_num when you send a packet
+void mrtp_host_set_redundancy_num(MRtpHost *host, mrtp_uint32 redundancy_num) {
+	if (redundancy_num > MRTP_PROTOCOL_MAXIMUM_REDUNDANCY_NUM) {
+		redundancy_num = MRTP_PROTOCOL_MAXIMUM_REDUNDANCY_NUM;
+	}
+	else if (redundancy_num < MRTP_PROTOCOL_MINIMUM_REDUNDANCY_NUM) {
+		redundancy_num = MRTP_PROTOCOL_MINIMUM_REDUNDANCY_NUM;
+	}
+	host->redundancyNum = redundancy_num;
 }

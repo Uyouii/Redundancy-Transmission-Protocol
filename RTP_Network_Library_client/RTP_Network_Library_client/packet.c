@@ -26,7 +26,6 @@ MRtpPacket * mrtp_packet_create(const void * data, size_t dataLength, mrtp_uint3
 	packet->flags = flags;
 	packet->dataLength = dataLength;
 	packet->freeCallback = NULL;
-	packet->userData = NULL;
 
 	return packet;
 }

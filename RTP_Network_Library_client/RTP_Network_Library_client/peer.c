@@ -23,7 +23,7 @@ void mrtp_peer_on_connect(MRtpPeer * peer) {
 	}
 }
 
-static void mrtp_peer_remove_incoming_commands(MRtpList * queue, MRtpListIterator startCommand, 
+static void mrtp_peer_remove_incoming_commands(MRtpList * queue, MRtpListIterator startCommand,
 	MRtpListIterator endCommand) {
 
 	MRtpListIterator currentCommand;
@@ -84,14 +84,17 @@ void mrtp_peer_reset_queues(MRtpPeer * peer) {
 		mrtp_free(mrtp_list_remove(mrtp_list_begin(&peer->acknowledgements)));
 
 	mrtp_peer_reset_outgoing_commands(&peer->sentReliableCommands);
+	mrtp_peer_reset_outgoing_commands(&peer->sentRedundancyNoAckCommands);
 	mrtp_peer_reset_outgoing_commands(&peer->outgoingReliableCommands);
+	mrtp_peer_reset_outgoing_commands(&peer->outgoingRedundancyCommands);
+	mrtp_peer_reset_outgoing_commands(&peer->outgoingRedundancyNoAckCommands);
 	mrtp_peer_reset_incoming_commands(&peer->dispatchedCommands);
 
 	if (peer->channels != NULL && peer->channelCount > 0) {
 		for (channel = peer->channels;
 			channel < &peer->channels[peer->channelCount];
 			++channel) {
-			mrtp_peer_reset_incoming_commands(&channel->incomingReliableCommands);
+			mrtp_peer_reset_incoming_commands(&channel->incomingCommands);
 		}
 
 		mrtp_free(peer->channels);
@@ -154,7 +157,6 @@ void mrtp_peer_reset(MRtpPeer * peer) {
 	peer->eventData = 0;
 	peer->totalWaitingData = 0;
 
-
 	mrtp_peer_reset_queues(peer);
 }
 
@@ -181,30 +183,34 @@ void mrtp_peer_setup_outgoing_command(MRtpPeer * peer, MRtpOutgoingCommand * out
 
 	MRtpChannel * channel = &peer->channels[outgoingCommand->command.header.channelID];
 
-	peer->outgoingDataTotal += mrtp_protocol_command_size(outgoingCommand->command.header.command) + 
+	peer->outgoingDataTotal += mrtp_protocol_command_size(outgoingCommand->command.header.command) +
 		outgoingCommand->fragmentLength;
 
 	// 根据指令类型增加相应的序号
 	if (outgoingCommand->command.header.channelID == 0xFF) {
 		++peer->outgoingReliableSequenceNumber;
-		outgoingCommand->reliableSequenceNumber = peer->outgoingReliableSequenceNumber;
-	}
-	else if (outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE) {
-			++channel->outgoingReliableSequenceNumber;
-			outgoingCommand->reliableSequenceNumber = channel->outgoingReliableSequenceNumber;
+		outgoingCommand->sequenceNumber = peer->outgoingReliableSequenceNumber;
 	}
 	else {
-		outgoingCommand->reliableSequenceNumber = channel->outgoingReliableSequenceNumber;
+		++channel->outgoingSequenceNumber;
+		outgoingCommand->sequenceNumber = channel->outgoingSequenceNumber;
 	}
 
 	outgoingCommand->sendAttempts = 0;
 	outgoingCommand->sentTime = 0;
 	outgoingCommand->roundTripTimeout = 0;
 	outgoingCommand->roundTripTimeoutLimit = 0;
-	outgoingCommand->command.header.reliableSequenceNumber = MRTP_HOST_TO_NET_16(outgoingCommand->reliableSequenceNumber);
+	outgoingCommand->command.header.sequenceNumber = MRTP_HOST_TO_NET_16(outgoingCommand->sequenceNumber);
 
-	if (outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE)
+	if (outgoingCommand->command.header.channelID == MRTP_PROTOCOL_RELIABLE_CHANNEL_NUM) {
 		mrtp_list_insert(mrtp_list_end(&peer->outgoingReliableCommands), outgoingCommand);
+	}
+	else if (outgoingCommand->command.header.channelID == MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM) {
+		mrtp_list_insert(mrtp_list_end(&peer->outgoingRedundancyCommands), outgoingCommand);
+	}
+	else if (outgoingCommand->command.header.channelID == MRTP_PROTOCOL_REDUNDANCY_NOACK_CHANNEL_NUM) {
+		mrtp_list_insert(mrtp_list_end(&peer->outgoingRedundancyNoAckCommands), outgoingCommand);
+	}
 }
 
 void mrtp_peer_ping(MRtpPeer * peer) {
@@ -226,10 +232,10 @@ MRtpAcknowledgement * mrtp_peer_queue_acknowledgement(MRtpPeer * peer, const MRt
 
 	if (command->header.channelID < peer->channelCount) {
 		MRtpChannel * channel = &peer->channels[command->header.channelID];
-		mrtp_uint16 reliableWindow = command->header.reliableSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE,
-			currentWindow = channel->incomingReliableSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
+		mrtp_uint16 reliableWindow = command->header.sequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE,
+			currentWindow = channel->incomingSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
 
-		if (command->header.reliableSequenceNumber < channel->incomingReliableSequenceNumber)
+		if (command->header.sequenceNumber < channel->incomingSequenceNumber)
 			reliableWindow += MRTP_PEER_RELIABLE_WINDOWS;
 
 		if (reliableWindow >= currentWindow + MRTP_PEER_FREE_RELIABLE_WINDOWS - 1 && reliableWindow <= currentWindow + MRTP_PEER_FREE_RELIABLE_WINDOWS)
@@ -252,7 +258,7 @@ MRtpAcknowledgement * mrtp_peer_queue_acknowledgement(MRtpPeer * peer, const MRt
 
 //调节peer->packetThrottle
 int mrtp_peer_throttle(MRtpPeer * peer, mrtp_uint32 rtt) {
-	//上次传输的速度非常快
+
 	if (peer->lastRoundTripTime <= peer->lastRoundTripTimeVariance) {
 		peer->packetThrottle = peer->packetThrottleLimit;
 	}
@@ -263,7 +269,7 @@ int mrtp_peer_throttle(MRtpPeer * peer, mrtp_uint32 rtt) {
 			peer->packetThrottle = peer->packetThrottleLimit;
 
 		return 1;
-	} 
+	}
 	else if (rtt > peer->lastRoundTripTime + 2 * peer->lastRoundTripTimeVariance) {
 		if (peer->packetThrottle > peer->packetThrottleDeceleration)
 			peer->packetThrottle -= peer->packetThrottleDeceleration;
@@ -308,7 +314,7 @@ void mrtp_peer_disconnect(MRtpPeer * peer, mrtp_uint32 data) {
 
 void mrtp_peer_disconnect_later(MRtpPeer * peer, mrtp_uint32 data) {
 	if ((peer->state == MRTP_PEER_STATE_CONNECTED || peer->state == MRTP_PEER_STATE_DISCONNECT_LATER) &&
-		!(mrtp_list_empty(&peer->outgoingReliableCommands) &&  mrtp_list_empty(&peer->sentReliableCommands)))
+		!(mrtp_list_empty(&peer->outgoingReliableCommands) && mrtp_list_empty(&peer->sentReliableCommands)))
 	{
 		peer->state = MRTP_PEER_STATE_DISCONNECT_LATER;
 		peer->eventData = data;
@@ -366,18 +372,64 @@ MRtpPacket * mrtp_peer_receive(MRtpPeer * peer, mrtp_uint8 * channelID) {
 	return packet;
 }
 
-int mrtp_peer_send_reliable(MRtpPeer * peer, MRtpPacket * packet) {
-
+int mrtp_peer_send(MRtpPeer *peer, MRtpPacket *packet) {
 	if (peer->state != MRTP_PEER_STATE_CONNECTED || packet->dataLength > peer->host->maximumPacketSize)
 		return -1;
+
+	if (packet->flags & MRTP_PACKET_FLAG_RELIABLE) {
+		return mrtp_peer_send_reliable(peer, packet);
+	}
+	else if (packet->flags & MRTP_PACKET_FLAG_REDUNDANCY) {
+		return mrtp_peer_send_redundancy(peer, packet);
+	}
+	else {
+		return mrtp_peer_send_redundancy_noack(peer, packet);
+	}
+
+}
+
+int mrtp_peer_send_redundancy_noack(MRtpPeer* peer, MRtpPacket* packet) {
+
+	// 如果之前peer的redundancybuffer没有初始化过，则进行初始化
+	if(peer->redundancyNum == 0)
+		mrtp_peer_reset_redundancy_noack_buffer(peer, MRTP_PROTOCOL_DEFAULT_REDUNDANCY_NUM);
+
+	MRtpChannel* channel = &peer->channels[MRTP_PROTOCOL_REDUNDANCY_NOACK_CHANNEL_NUM];
+	MRtpProtocol command;
+	size_t fragementLength;
+
+	fragementLength = (peer->mtu - sizeof(MRtpProtocolHeader)) / peer->redundancyNum - sizeof(MRtpProtocolSendRedundancyNoAck);
+
+	if (packet->dataLength > fragementLength) {
+
+	}
+	else {
+		command.header.channelID = MRTP_PROTOCOL_REDUNDANCY_NOACK_CHANNEL_NUM;
+		command.header.command = MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_NO_ACK;
+		command.sendRedundancyFragementNoAck.dataLength = MRTP_HOST_TO_NET_16(packet->dataLength);
+		if (mrtp_peer_queue_outgoing_command(peer, &command, packet, 0, packet->dataLength) == NULL)
+			return -1;
+	}
+	return 0;
+}
+
+int mrtp_peer_send_redundancy(MRtpPeer* peer, MRtpPacket* packet) {
+
+	MRtpChannel *channel = &peer->channels[MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM];
+	MRtpProtocol command;
+	size_t fragementLength;
+
+	fragementLength = peer->mtu - sizeof(MRtpProtocolHeader);
+	return 0;
+}
+
+int mrtp_peer_send_reliable(MRtpPeer * peer, MRtpPacket * packet) {
 
 	MRtpChannel * channel = &peer->channels[MRTP_PROTOCOL_RELIABLE_CHANNEL_NUM];
 	MRtpProtocol command;
 	size_t fragmentLength;
 
 	fragmentLength = peer->mtu - sizeof(MRtpProtocolHeader) - sizeof(MRtpProtocolSendFragment);
-	if (peer->host->checksum != NULL)
-		fragmentLength -= sizeof(mrtp_uint32);
 
 	// 如果需要分片
 	if (packet->dataLength > fragmentLength) {
@@ -393,7 +445,7 @@ int mrtp_peer_send_reliable(MRtpPeer * peer, MRtpPacket * packet) {
 			return -1;
 
 		commandNumber = MRTP_PROTOCOL_COMMAND_SEND_FRAGMENT | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
-		startSequenceNumber = MRTP_HOST_TO_NET_16(channel->outgoingReliableSequenceNumber + 1);
+		startSequenceNumber = MRTP_HOST_TO_NET_16(channel->outgoingSequenceNumber + 1);
 
 		mrtp_list_clear(&fragments);
 
@@ -451,14 +503,13 @@ int mrtp_peer_send_reliable(MRtpPeer * peer, MRtpPacket * packet) {
 	return 0;
 }
 
-MRtpIncomingCommand *mrtp_peer_queue_incoming_command(MRtpPeer * peer, const MRtpProtocol * command, 
+MRtpIncomingCommand *mrtp_peer_queue_incoming_command(MRtpPeer * peer, const MRtpProtocol * command,
 	const void * data, size_t dataLength, mrtp_uint32 flags, mrtp_uint32 fragmentCount)
 {
 	static MRtpIncomingCommand dummyCommand;
-
 	MRtpChannel * channel = &peer->channels[command->header.channelID];
-	mrtp_uint32 unreliableSequenceNumber = 0, reliableSequenceNumber = 0;
-	mrtp_uint16 reliableWindow, currentWindow;
+	mrtp_uint32 sequenceNumber = 0;
+	mrtp_uint16 commandWindow, currentWindow;
 	MRtpIncomingCommand * incomingCommand;
 	MRtpListIterator currentCommand;
 	MRtpPacket * packet = NULL;
@@ -466,15 +517,15 @@ MRtpIncomingCommand *mrtp_peer_queue_incoming_command(MRtpPeer * peer, const MRt
 	if (peer->state == MRTP_PEER_STATE_DISCONNECT_LATER)
 		goto discardCommand;
 
-	reliableSequenceNumber = command->header.reliableSequenceNumber;
-	reliableWindow = reliableSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
-	currentWindow = channel->incomingReliableSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
+	sequenceNumber = command->header.sequenceNumber;
+	commandWindow = sequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
+	currentWindow = channel->incomingSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
 
 	// 如果sequenceNumber 大小溢出了
-	if (reliableSequenceNumber < channel->incomingReliableSequenceNumber)
-		reliableWindow += MRTP_PEER_RELIABLE_WINDOWS;
+	if (sequenceNumber < channel->incomingSequenceNumber)
+		commandWindow += MRTP_PEER_RELIABLE_WINDOWS;
 
-	if (reliableWindow < currentWindow || reliableWindow >= currentWindow + MRTP_PEER_FREE_RELIABLE_WINDOWS - 1)
+	if (commandWindow < currentWindow || commandWindow >= currentWindow + MRTP_PEER_FREE_RELIABLE_WINDOWS - 1)
 		goto discardCommand;
 
 	switch (command->header.command & MRTP_PROTOCOL_COMMAND_MASK)
@@ -482,31 +533,39 @@ MRtpIncomingCommand *mrtp_peer_queue_incoming_command(MRtpPeer * peer, const MRt
 	case MRTP_PROTOCOL_COMMAND_SEND_FRAGMENT:
 	case MRTP_PROTOCOL_COMMAND_SEND_RELIABLE:
 
-		if (reliableSequenceNumber == channel->incomingReliableSequenceNumber)
+		if (sequenceNumber == channel->incomingSequenceNumber)
 			goto discardCommand;
 
-		for (currentCommand = mrtp_list_previous(mrtp_list_end(&channel->incomingReliableCommands));
-			currentCommand != mrtp_list_end(&channel->incomingReliableCommands);
+		for (currentCommand = mrtp_list_previous(mrtp_list_end(&channel->incomingCommands));
+			currentCommand != mrtp_list_end(&channel->incomingCommands);
 			currentCommand = mrtp_list_previous(currentCommand))
 		{
 			incomingCommand = (MRtpIncomingCommand *)currentCommand;
-			
-			// 大神级操作！！！句句精辟
-			if (reliableSequenceNumber >= channel->incomingReliableSequenceNumber) {
-				if (incomingCommand->reliableSequenceNumber < channel->incomingReliableSequenceNumber)
+
+			if (sequenceNumber >= channel->incomingSequenceNumber) {
+				if (incomingCommand->sequenceNumber < channel->incomingSequenceNumber)
 					continue;
 			}
-			else if (incomingCommand->reliableSequenceNumber >= channel->incomingReliableSequenceNumber)
+			else if (incomingCommand->sequenceNumber >= channel->incomingSequenceNumber)
 				break;
 
 			//找到把command插入到合适的位置
-			if (incomingCommand->reliableSequenceNumber <= reliableSequenceNumber) {
-				if (incomingCommand->reliableSequenceNumber < reliableSequenceNumber)
+			if (incomingCommand->sequenceNumber <= sequenceNumber) {
+				if (incomingCommand->sequenceNumber < sequenceNumber)
 					break;
 				// 如果相等
 				goto discardCommand;
 			}
 		}
+		break;
+
+	case MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_NO_ACK:
+
+		if (sequenceNumber == channel->incomingSequenceNumber)
+			goto discardCommand;
+
+		printf("get send redundancy no ack\n");
+
 		break;
 
 	default:
@@ -524,7 +583,7 @@ MRtpIncomingCommand *mrtp_peer_queue_incoming_command(MRtpPeer * peer, const MRt
 	if (incomingCommand == NULL)
 		goto notifyError;
 
-	incomingCommand->reliableSequenceNumber = command->header.reliableSequenceNumber;
+	incomingCommand->sequenceNumber = command->header.sequenceNumber;
 	incomingCommand->command = *command;
 	incomingCommand->fragmentCount = fragmentCount;
 	incomingCommand->fragmentsRemaining = fragmentCount;
@@ -584,32 +643,96 @@ void mrtp_peer_dispatch_incoming_reliable_commands(MRtpPeer * peer, MRtpChannel 
 
 	MRtpListIterator currentCommand;
 
-	for (currentCommand = mrtp_list_begin(&channel->incomingReliableCommands);
-		currentCommand != mrtp_list_end(&channel->incomingReliableCommands);
+	for (currentCommand = mrtp_list_begin(&channel->incomingCommands);
+		currentCommand != mrtp_list_end(&channel->incomingCommands);
 		currentCommand = mrtp_list_next(currentCommand))
 	{
 		MRtpIncomingCommand * incomingCommand = (MRtpIncomingCommand *)currentCommand;
 
 		//如果fragement还有剩余或者序号不对就跳出
 		if (incomingCommand->fragmentsRemaining > 0 ||
-			incomingCommand->reliableSequenceNumber != (mrtp_uint16)(channel->incomingReliableSequenceNumber + 1))
+			incomingCommand->sequenceNumber != (mrtp_uint16)(channel->incomingSequenceNumber + 1))
 			break;
 
-		channel->incomingReliableSequenceNumber = incomingCommand->reliableSequenceNumber;
+		channel->incomingSequenceNumber = incomingCommand->sequenceNumber;
 		//将fragement的序号加上
 		if (incomingCommand->fragmentCount > 0)
-			channel->incomingReliableSequenceNumber += incomingCommand->fragmentCount - 1;
+			channel->incomingSequenceNumber += incomingCommand->fragmentCount - 1;
 	}
 
-	if (currentCommand == mrtp_list_begin(&channel->incomingReliableCommands))
+	if (currentCommand == mrtp_list_begin(&channel->incomingCommands))
 		return;
 
 	//移动到dispatch队列
-	mrtp_list_move(mrtp_list_end(&peer->dispatchedCommands), mrtp_list_begin(&channel->incomingReliableCommands), mrtp_list_previous(currentCommand));
+	mrtp_list_move(mrtp_list_end(&peer->dispatchedCommands), mrtp_list_begin(&channel->incomingCommands), mrtp_list_previous(currentCommand));
 
 	if (!peer->needsDispatch) {
 		mrtp_list_insert(mrtp_list_end(&peer->host->dispatchQueue), &peer->dispatchList);
 
 		peer->needsDispatch = 1;
 	}
+}
+
+void mrtp_peer_reset_redundancy_noack_buffer(MRtpPeer* peer, size_t redundancyNum) {
+
+	if (redundancyNum > MRTP_PROTOCOL_MAXIMUM_REDUNDANCY_NUM)
+		redundancyNum = MRTP_PROTOCOL_MAXIMUM_REDUNDANCY_NUM;
+	else if (redundancyNum < MRTP_PROTOCOL_MINIMUM_REDUNDANCY_NUM)
+		redundancyNum = MRTP_PROTOCOL_MINIMUM_REDUNDANCY_NUM;
+
+	if (redundancyNum == peer->redundancyNum && !peer->redundancyNoAckBuffers) {
+		peer->currentRedundancyNoAckBufferNum = 0;
+
+		for (int i = 0; i < redundancyNum; i++) {
+			mrtp_protocol_remove_redundancy_buffer_commands(&peer->redundancyNoAckBuffers[i]);
+			memset(&peer->redundancyNoAckBuffers, 0, sizeof(MRtpRedundancyBuffer));
+			mrtp_list_clear(&peer->redundancyNoAckBuffers[i].sentCommands);
+		}
+	}
+	else if (peer->redundancyNoAckBuffers != NULL) {
+		for (int i = 0; i < redundancyNum; i++) {
+			mrtp_protocol_remove_redundancy_buffer_commands(&peer->redundancyNoAckBuffers[i]);
+		}
+		mrtp_free(peer->redundancyNoAckBuffers);
+		peer->redundancyNum = redundancyNum;
+		peer->redundancyNoAckBuffers = mrtp_malloc(peer->redundancyNum * sizeof(MRtpRedundancyBuffer));
+		for (int i = 0; i < peer->redundancyNum; i++) {
+			memset(&peer->redundancyNoAckBuffers, 0, sizeof(MRtpRedundancyBuffer));
+			mrtp_list_clear(&peer->redundancyNoAckBuffers[i].sentCommands);
+		}
+	}
+	else {
+		peer->redundancyNum = redundancyNum;
+		peer->redundancyNoAckBuffers = mrtp_malloc(peer->redundancyNum * sizeof(MRtpRedundancyBuffer));
+		for (int i = 0; i < peer->redundancyNum; i++) {
+			memset(&peer->redundancyNoAckBuffers, 0, sizeof(MRtpRedundancyBuffer));
+			mrtp_list_clear(&peer->redundancyNoAckBuffers[i].sentCommands);
+		}
+	}
+}
+
+void mrtp_peer_reset_reduandancy_buffer(MRtpPeer* peer, size_t redundancyNum) {
+
+	if (redundancyNum > MRTP_PROTOCOL_MAXIMUM_REDUNDANCY_NUM)
+		redundancyNum = MRTP_PROTOCOL_MAXIMUM_REDUNDANCY_NUM;
+	else if (redundancyNum < MRTP_PROTOCOL_MINIMUM_REDUNDANCY_NUM)
+		redundancyNum = MRTP_PROTOCOL_MINIMUM_REDUNDANCY_NUM;
+
+	if (peer->redundancyBuffers == NULL) {
+		peer->redundancyNum = redundancyNum;
+		peer->redundancyBuffers = mrtp_malloc(MRTP_PROTOCOL_MAXIMUM_REDUNDNACY_BUFFER_SIZE * sizeof(MRtpRedundancyBuffer));
+		for (int i = 0; i < MRTP_PROTOCOL_MAXIMUM_REDUNDNACY_BUFFER_SIZE; i++) {
+			memset(&peer->redundancyBuffers[i],0,sizeof(MRtpRedundancyBuffer));
+			mrtp_list_clear(&peer->redundancyBuffers[i].sentCommands);
+		}
+	}
+	else {
+		peer->redundancyNum = redundancyNum;
+		for (int i = 0; i < MRTP_PROTOCOL_MAXIMUM_REDUNDNACY_BUFFER_SIZE; i++) {
+			mrtp_protocol_remove_redundancy_buffer_commands(&peer->redundancyNoAckBuffers[i]);
+			memset(&peer->redundancyBuffers[i], 0, sizeof(MRtpRedundancyBuffer));
+			mrtp_list_clear(&peer->redundancyBuffers[i].sentCommands);
+		}
+	}
+	
 }

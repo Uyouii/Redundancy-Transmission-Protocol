@@ -2,10 +2,10 @@
 #define _MRTP_H_
 
 // for debug
-//#define SENDANDRECEIVE
+#define SENDANDRECEIVE
 //#define FLOWCONTROLDEBUG
 //#define RELIABLEWINDOWDEBUG
-#define PACKETLOSSDEBUG
+//#define PACKETLOSSDEBUG
 
 #ifdef __cplusplus
 extern "C"
@@ -66,14 +66,12 @@ extern "C"
 	} MRtpAddress;
 
 	typedef enum _MRtpPacketFlag {
-		/** packet must be received by the target peer and resend attempts should be
-		* made until the packet is delivered */
 		MRTP_PACKET_FLAG_RELIABLE = (1 << 0),
-
-		/** packet will not allocate data, and user must supply it instead */
 		MRTP_PACKET_FLAG_NO_ALLOCATE = (1 << 2),
+		MRTP_PACKET_FLAG_REDUNDANCY = (1 << 3),
+		MRTP_PACKET_FLAG_REDUNDANCY_NO_ACK = (1 << 4),
 
-		/** whether the packet has been sent from all queues it has been entered into */
+
 		MRTP_PACKET_FLAG_SENT = (1 << 8)
 	} MRtpPacketFlag;
 
@@ -85,7 +83,6 @@ extern "C"
 		mrtp_uint8 *             data;            /**< allocated data for packet */
 		size_t                   dataLength;      /**< length of data */
 		MRtpPacketFreeCallback   freeCallback;    /**< function to be called when the packet is no longer in use */
-		void *                   userData;        /**< application private data, may be freely modified */
 	} MRtpPacket;
 
 	typedef struct _MRtpAcknowledgement
@@ -98,7 +95,7 @@ extern "C"
 	typedef struct _MRtpOutgoingCommand
 	{
 		MRtpListNode outgoingCommandList;
-		mrtp_uint16  reliableSequenceNumber;
+		mrtp_uint16  sequenceNumber;
 		mrtp_uint32  sentTime;
 		mrtp_uint32  roundTripTimeout;
 		mrtp_uint32  roundTripTimeoutLimit;
@@ -111,13 +108,13 @@ extern "C"
 
 	typedef struct _MRtpIncomingCommand
 	{
-		MRtpListNode     incomingCommandList;
-		mrtp_uint16      reliableSequenceNumber;
-		MRtpProtocol     command;
-		mrtp_uint32      fragmentCount;
-		mrtp_uint32      fragmentsRemaining;
-		mrtp_uint32 *    fragments;
-		MRtpPacket *     packet;
+		MRtpListNode incomingCommandList;
+		mrtp_uint16 sequenceNumber;
+		MRtpProtocol command;
+		mrtp_uint32 fragmentCount;
+		mrtp_uint32 fragmentsRemaining;
+		mrtp_uint32 * fragments;
+		MRtpPacket * packet;
 	} MRtpIncomingCommand;
 
 	typedef enum _MRtpPeerState {
@@ -166,16 +163,19 @@ extern "C"
 	};
 
 	typedef struct _MRtpChannel {
-		mrtp_uint16  outgoingReliableSequenceNumber;
-		mrtp_uint16  usedReliableWindows;
-		mrtp_uint16  reliableWindows[MRTP_PEER_RELIABLE_WINDOWS];
-		mrtp_uint16  incomingReliableSequenceNumber;
-		MRtpList     incomingReliableCommands;
+		mrtp_uint16 outgoingSequenceNumber;
+		mrtp_uint16 usedReliableWindows;
+		mrtp_uint16 commandWindows[MRTP_PEER_RELIABLE_WINDOWS];
+		mrtp_uint16 incomingSequenceNumber;
+		MRtpList incomingCommands;
 	} MRtpChannel;
 
+
 	typedef struct _MRtpRedundancyBuffer {
-		size_t length;
-		mrtp_uint8 *data;
+		MRtpBuffer buffers[MRTP_BUFFER_MAXIMUM / 2];
+		MRtpList sentCommands;
+		size_t buffercount;
+		size_t packetSize;
 	} MRtpRedundancyBuffer;
 
 	typedef struct _MRtpPeer {
@@ -229,21 +229,24 @@ extern "C"
 		mrtp_uint16 outgoingReliableSequenceNumber;
 		MRtpList acknowledgements;
 		MRtpList sentReliableCommands;
+		MRtpList sentRedundancyNoAckCommands;
 		MRtpList outgoingReliableCommands;
+		MRtpList outgoingRedundancyCommands;
+		MRtpList outgoingRedundancyNoAckCommands;
 		MRtpList dispatchedCommands;
 		int needsDispatch;
 		mrtp_uint32 eventData;
 		size_t totalWaitingData;
-		size_t currentRedundancyBufferNum;
 		size_t redundancyNum;
+		size_t currentRedundancyNoAckBufferNum;
+		MRtpRedundancyBuffer* redundancyNoAckBuffers;
+		size_t currentRedundancyBufferNum;
 		MRtpRedundancyBuffer* redundancyBuffers;
 	} MRtpPeer;
 
-	/** Callback that computes the checksum of the data held in buffers[0:bufferCount-1] */
+
 	typedef mrtp_uint32(MRTP_CALLBACK * MRtpChecksumCallback) (const MRtpBuffer * buffers, size_t bufferCount);
 
-	/** Callback for intercepting received raw UDP packets. Should return 1 to intercept,
-	0 to ignore, or -1 to propagate an error. */
 	typedef int (MRTP_CALLBACK * MRtpInterceptCallback) (struct _MRtpHost * host, struct _MRtpEvent * event);
 
 	typedef struct _MRtpHost {
@@ -282,17 +285,12 @@ extern "C"
 		mrtp_uint8 redundancyNum;
 	} MRtpHost;
 
-	/**
-	* An MRtp event type, as specified in @ref MRtpEvent.
-	*/
+
 	typedef enum _MRtpEventType {
 		/** no event occurred within the specified time limit */
 		MRTP_EVENT_TYPE_NONE = 0,
-
 		MRTP_EVENT_TYPE_CONNECT = 1,
-
 		MRTP_EVENT_TYPE_DISCONNECT = 2,
-
 		MRTP_EVENT_TYPE_RECEIVE = 3
 	} MRtpEventType;
 
@@ -304,37 +302,12 @@ extern "C"
 		MRtpPacket *         packet;    /**< packet associated with the event, if appropriate */
 	} MRtpEvent;
 
-	/**
-	Initializes MRtp globally.  Must be called prior to using any functions in
-	MRtp.
-	@returns 0 on success, < 0 on failure
-	*/
+
 	MRTP_API int mrtp_initialize(void);
-
-	/**
-	Initializes MRtp globally and supplies user-overridden callbacks. Must be called prior to using any functions in MRtp. Do not use mrtp_initialize() if you use this variant. Make sure the MRtpCallbacks structure is zeroed out so that any additional callbacks added in future versions will be properly ignored.
-
-	@param version the constant MRTP_VERSION should be supplied so MRtp knows which version of MRtpCallbacks struct to use
-	@param inits user-overridden callbacks where any NULL callbacks will use MRtp's defaults
-	@returns 0 on success, < 0 on failure
-	*/
 	MRTP_API int mrtp_initialize_with_callbacks(const MRtpCallbacks * inits);
-
-	/**
-	Shuts down MRtp globally.  Should be called when a program that has
-	initialized MRtp exits.
-	*/
 	MRTP_API void mrtp_deinitialize(void);
 
-
-	/**
-	Returns the wall-time in milliseconds.  Its initial value is unspecified
-	unless otherwise set.
-	*/
 	MRTP_API mrtp_uint32 mrtp_time_get(void);
-	/**
-	Sets the current wall-time in milliseconds.
-	*/
 	MRTP_API void mrtp_time_set(mrtp_uint32);
 
 	MRTP_API MRtpSocket mrtp_socket_create(MRtpSocketType);
@@ -356,46 +329,48 @@ extern "C"
 	MRTP_API int mrtp_address_get_host_ip(const MRtpAddress * address, char * hostName, size_t nameLength);
 	MRTP_API int mrtp_address_get_host(const MRtpAddress * address, char * hostName, size_t nameLength);
 
-
 	MRTP_API MRtpPacket * mrtp_packet_create(const void *, size_t, mrtp_uint32);
-	MRTP_API void         mrtp_packet_destroy(MRtpPacket *);
-	MRTP_API int          mrtp_packet_resize(MRtpPacket *, size_t);
-	MRTP_API mrtp_uint32  mrtp_crc32(const MRtpBuffer *, size_t);
+	MRTP_API void mrtp_packet_destroy(MRtpPacket *);
+	MRTP_API int mrtp_packet_resize(MRtpPacket *, size_t);
+	MRTP_API mrtp_uint32 mrtp_crc32(const MRtpBuffer *, size_t);
 
 	MRTP_API MRtpHost * mrtp_host_create(const MRtpAddress *, size_t, mrtp_uint32, mrtp_uint32);
-	MRTP_API void       mrtp_host_destroy(MRtpHost *);
+	MRTP_API void mrtp_host_destroy(MRtpHost *);
 	MRTP_API MRtpPeer * mrtp_host_connect(MRtpHost *, const MRtpAddress *);
-	MRTP_API int        mrtp_host_check_events(MRtpHost *, MRtpEvent *);
-	MRTP_API int        mrtp_host_service(MRtpHost *, MRtpEvent *, mrtp_uint32);
-	MRTP_API void       mrtp_host_flush(MRtpHost *);
-	MRTP_API void       mrtp_host_broadcast(MRtpHost *, mrtp_uint8, MRtpPacket *);
-	MRTP_API void       mrtp_host_channel_limit(MRtpHost *, size_t);
-	MRTP_API void       mrtp_host_bandwidth_limit(MRtpHost *, mrtp_uint32, mrtp_uint32);
-	extern   void       mrtp_host_bandwidth_throttle(MRtpHost *);
-	extern  mrtp_uint32 mrtp_host_random_seed(void);
+	MRTP_API int mrtp_host_check_events(MRtpHost *, MRtpEvent *);
+	MRTP_API int mrtp_host_service(MRtpHost *, MRtpEvent *, mrtp_uint32);
+	MRTP_API void mrtp_host_flush(MRtpHost *);
+	MRTP_API void mrtp_host_broadcast(MRtpHost *, mrtp_uint8, MRtpPacket *);
+	MRTP_API void mrtp_host_channel_limit(MRtpHost *, size_t);
+	MRTP_API void mrtp_host_bandwidth_limit(MRtpHost *, mrtp_uint32, mrtp_uint32);
+	extern void mrtp_host_bandwidth_throttle(MRtpHost *);
+	extern mrtp_uint32 mrtp_host_random_seed(void);
+	extern void mrtp_host_set_redundancy_num(MRtpHost *host, mrtp_uint32 redundancy_num);
 
 	MRTP_API int mrtp_peer_send_reliable(MRtpPeer * peer, MRtpPacket * packet);
-	MRTP_API MRtpPacket *        mrtp_peer_receive(MRtpPeer *, mrtp_uint8 * channelID);
-	MRTP_API void                mrtp_peer_ping(MRtpPeer *);
-	MRTP_API void                mrtp_peer_ping_interval(MRtpPeer *, mrtp_uint32);
-	MRTP_API void                mrtp_peer_timeout(MRtpPeer *, mrtp_uint32, mrtp_uint32, mrtp_uint32);
-	MRTP_API void                mrtp_peer_reset(MRtpPeer *);
-	MRTP_API void                mrtp_peer_disconnect(MRtpPeer *, mrtp_uint32);
-	MRTP_API void                mrtp_peer_disconnect_now(MRtpPeer *, mrtp_uint32);
-	MRTP_API void                mrtp_peer_disconnect_later(MRtpPeer *, mrtp_uint32);
-	MRTP_API void                mrtp_peer_throttle_configure(MRtpPeer *, mrtp_uint32, mrtp_uint32, mrtp_uint32);
-	extern int                   mrtp_peer_throttle(MRtpPeer *, mrtp_uint32);
-	extern void                  mrtp_peer_reset_queues(MRtpPeer *);
-	extern void                  mrtp_peer_setup_outgoing_command(MRtpPeer *, MRtpOutgoingCommand *);
+	MRTP_API MRtpPacket * mrtp_peer_receive(MRtpPeer *, mrtp_uint8 * channelID);
+	MRTP_API void mrtp_peer_ping(MRtpPeer *);
+	MRTP_API void mrtp_peer_ping_interval(MRtpPeer *, mrtp_uint32);
+	MRTP_API void mrtp_peer_timeout(MRtpPeer *, mrtp_uint32, mrtp_uint32, mrtp_uint32);
+	MRTP_API void mrtp_peer_reset(MRtpPeer *);
+	MRTP_API void mrtp_peer_disconnect(MRtpPeer *, mrtp_uint32);
+	MRTP_API void mrtp_peer_disconnect_now(MRtpPeer *, mrtp_uint32);
+	MRTP_API void  mrtp_peer_disconnect_later(MRtpPeer *, mrtp_uint32);
+	MRTP_API void mrtp_peer_throttle_configure(MRtpPeer *, mrtp_uint32, mrtp_uint32, mrtp_uint32);
+	extern int mrtp_peer_throttle(MRtpPeer *, mrtp_uint32);
+	extern void mrtp_peer_reset_queues(MRtpPeer *);
+	extern void mrtp_peer_setup_outgoing_command(MRtpPeer *, MRtpOutgoingCommand *);
 	extern MRtpOutgoingCommand * mrtp_peer_queue_outgoing_command(MRtpPeer *, const MRtpProtocol *, MRtpPacket *, mrtp_uint32, mrtp_uint16);
 	extern MRtpIncomingCommand * mrtp_peer_queue_incoming_command(MRtpPeer *, const MRtpProtocol *, const void *, size_t, mrtp_uint32, mrtp_uint32);
 	extern MRtpAcknowledgement * mrtp_peer_queue_acknowledgement(MRtpPeer *, const MRtpProtocol *, mrtp_uint16);
-	extern void                  mrtp_peer_dispatch_incoming_reliable_commands(MRtpPeer *, MRtpChannel *);
-	extern void                  mrtp_peer_on_connect(MRtpPeer *);
-	extern void                  mrtp_peer_on_disconnect(MRtpPeer *);
-	void mrtp_peer_reset_reduandancy_buffer(MRtpPeer* peer, size_t redundancyNum);
+	extern void mrtp_peer_dispatch_incoming_reliable_commands(MRtpPeer *, MRtpChannel *);
+	extern void mrtp_peer_on_connect(MRtpPeer *);
+	extern void mrtp_peer_on_disconnect(MRtpPeer *);
+	extern void mrtp_peer_reset_redundancy_noack_buffer(MRtpPeer* peer, size_t redundancyNum);
+	extern void mrtp_peer_reset_reduandancy_buffer(MRtpPeer* peer, size_t redundancyNum);
 
 	extern size_t mrtp_protocol_command_size(mrtp_uint8);
+	extern void mrtp_protocol_remove_redundancy_buffer_commands(MRtpRedundancyBuffer* mrtpRedundancyBuffer);
 
 
 #ifdef __cplusplus
