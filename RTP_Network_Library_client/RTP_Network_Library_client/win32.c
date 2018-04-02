@@ -283,8 +283,7 @@ int mrtp_socket_send(MRtpSocket socket, const MRtpAddress * address,
 int mrtp_socket_receive(MRtpSocket socket, MRtpAddress * address, MRtpBuffer * buffers, size_t bufferCount) {
 
 	INT sinLength = sizeof(struct sockaddr_in);
-	DWORD flags = 0,
-		recvLength;
+	DWORD flags = 0, recvLength;
 	struct sockaddr_in sin;
 
 	if (WSARecvFrom(socket,
@@ -297,7 +296,8 @@ int mrtp_socket_receive(MRtpSocket socket, MRtpAddress * address, MRtpBuffer * b
 		NULL,
 		NULL) == SOCKET_ERROR)
 	{
-		switch (WSAGetLastError()) {
+		int error = WSAGetLastError();
+		switch (error) {
 		case WSAEWOULDBLOCK:
 		case WSAECONNRESET:
 			return 0;

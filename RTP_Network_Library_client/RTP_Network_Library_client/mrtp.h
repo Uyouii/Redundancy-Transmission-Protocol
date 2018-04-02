@@ -172,10 +172,10 @@ extern "C"
 
 
 	typedef struct _MRtpRedundancyBuffer {
-		MRtpBuffer buffers[MRTP_BUFFER_MAXIMUM / 2];
 		MRtpList sentCommands;
 		size_t buffercount;
 		size_t packetSize;
+		MRtpBuffer buffers[MRTP_BUFFER_MAXIMUM / 2];
 	} MRtpRedundancyBuffer;
 
 	typedef struct _MRtpPeer {
@@ -348,6 +348,7 @@ extern "C"
 	extern void mrtp_host_set_redundancy_num(MRtpHost *host, mrtp_uint32 redundancy_num);
 
 	MRTP_API int mrtp_peer_send_reliable(MRtpPeer * peer, MRtpPacket * packet);
+	MRTP_API int mrtp_peer_send(MRtpPeer *peer, MRtpPacket *packet);
 	MRTP_API MRtpPacket * mrtp_peer_receive(MRtpPeer *, mrtp_uint8 * channelID);
 	MRTP_API void mrtp_peer_ping(MRtpPeer *);
 	MRTP_API void mrtp_peer_ping_interval(MRtpPeer *, mrtp_uint32);

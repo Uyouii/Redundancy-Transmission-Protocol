@@ -5,16 +5,16 @@
 #include<string>
 #include<iostream>
 
-#define SERVERADDRESS "10.240.66.57"
-//#define SERVERADDRESS "10.242.3.221"
+//#define SERVERADDRESS "10.240.66.57"
+#define SERVERADDRESS "10.242.3.221"
 
 MRtpHost* createClient() {
 	MRtpHost * client;
 	client = mrtp_host_create(
 		NULL /* create a client host */,
 		1 /* only allow 1 outgoing connection */,
-		56000 / 8 /* 56K modem with 56 Kbps downstream bandwidth */,
-		14000 / 8 /* 56K modem with 14 Kbps upstream bandwidth */
+		0 /* 56K modem with 56 Kbps downstream bandwidth */,
+		0 /* 56K modem with 14 Kbps upstream bandwidth */
 	);
 
 	if (client == NULL) {
@@ -44,7 +44,7 @@ int main(int argc, char ** argv) {
 	address.port = 1234;
 
 	/* Initiate the connection, allocating the two channels 0 and 1. */
-	peer = mrtp_host_connect(client, &address, 0);
+	peer = mrtp_host_connect(client, &address);
 
 	if (peer == NULL) {
 		printf("No available peers for initiating an MRtp connection.\n");
@@ -73,8 +73,8 @@ int main(int argc, char ** argv) {
 			mrtp_peer_disconnect(peer, 0);
 		}*/
 		std::string packet_str = "packct" + std::to_string(packetNum) + "at peer" + std::to_string(peer->outgoingPeerID);
-		MRtpPacket * packet = mrtp_packet_create(packet_str.c_str(), packet_str.size()+1, MRTP_PACKET_FLAG_RELIABLE);
-		mrtp_peer_send_reliable(peer, packet);
+		MRtpPacket * packet = mrtp_packet_create(packet_str.c_str(), packet_str.size()+1, MRTP_PACKET_FLAG_REDUNDANCY_NO_ACK);
+		mrtp_peer_send(peer, packet);
 		packetNum++;
 	}
 	atexit(mrtp_deinitialize);
