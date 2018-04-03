@@ -302,6 +302,7 @@ extern "C"
 		MRtpPacket *         packet;    /**< packet associated with the event, if appropriate */
 	} MRtpEvent;
 
+	extern mrtp_uint8 channelIDs[];
 
 	MRTP_API int mrtp_initialize(void);
 	MRTP_API int mrtp_initialize_with_callbacks(const MRtpCallbacks * inits);

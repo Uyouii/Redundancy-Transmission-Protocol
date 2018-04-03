@@ -71,7 +71,7 @@ typedef struct _MRtpProtocolHeader {
 
 typedef struct _MRtpProtocolCommandHeader {
 	mrtp_uint8 command;
-	mrtp_uint8 channelID;
+	//mrtp_uint8 channelID;
 	mrtp_uint16 sequenceNumber;
 } MRTP_PACKED MRtpProtocolCommandHeader;
 

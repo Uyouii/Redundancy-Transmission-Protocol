@@ -68,14 +68,17 @@ int main(int argc, char ** argv) {
 		}
 		if (disconnected)
 			break;
-		/*if (peer->outgoingReliableSequenceNumber > 10 || 
-			peer->channels[MRTP_PROTOCOL_RELIABLE_CHANNEL_NUM].outgoingReliableSequenceNumber > 5) {
+		if (!disconnected && (peer->outgoingReliableSequenceNumber > 10 || 
+			peer->channels[MRTP_PROTOCOL_RELIABLE_CHANNEL_NUM].outgoingSequenceNumber > 5)) {
 			mrtp_peer_disconnect(peer, 0);
-		}*/
-		std::string packet_str = "packct" + std::to_string(packetNum) + "at peer" + std::to_string(peer->outgoingPeerID);
-		MRtpPacket * packet = mrtp_packet_create(packet_str.c_str(), packet_str.size()+1, MRTP_PACKET_FLAG_REDUNDANCY_NO_ACK);
-		mrtp_peer_send(peer, packet);
-		packetNum++;
+		}
+		if (!disconnected) {
+			std::string packet_str = "packct" + std::to_string(packetNum) + "at peer" + std::to_string(peer->outgoingPeerID);
+			MRtpPacket * packet = mrtp_packet_create(packet_str.c_str(), packet_str.size() + 1, MRTP_PACKET_FLAG_REDUNDANCY_NO_ACK);
+			mrtp_peer_send(peer, packet);
+			packetNum++;
+		}
+		
 	}
 	atexit(mrtp_deinitialize);
 	system("pause");

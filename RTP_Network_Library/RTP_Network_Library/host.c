@@ -141,7 +141,6 @@ MRtpPeer *mrtp_host_connect(MRtpHost * host, const MRtpAddress * address) {
 	}
 
 	command.header.command = MRTP_PROTOCOL_COMMAND_CONNECT | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
-	command.header.channelID = 0xFF;
 	command.connect.outgoingPeerID = MRTP_HOST_TO_NET_16(currentPeer->incomingPeerID);
 	command.connect.incomingSessionID = currentPeer->incomingSessionID;
 	command.connect.outgoingSessionID = currentPeer->outgoingSessionID;
@@ -335,7 +334,6 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 
 			//向带宽大于平均水平的peer发送流量控制命令
 			command.header.command = MRTP_PROTOCOL_COMMAND_BANDWIDTH_LIMIT | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
-			command.header.channelID = 0xFF;	//标记响应channel(realiable)
 			command.bandwidthLimit.outgoingBandwidth = MRTP_HOST_TO_NET_32(host->outgoingBandwidth);
 
 			// 将超过平均水平的设置为平均水平，否则不变，发送带宽控制命令

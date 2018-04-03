@@ -20,6 +20,21 @@ static size_t commandSizes[MRTP_PROTOCOL_COMMAND_COUNT] = {
 	sizeof(MRtpProtocolSendRedundancyFragementNoAck)
 };
 
+mrtp_uint8 channelIDs[] = {
+	0xFF,										//none
+	0xFF,										//ack
+	0xFF,										//connect
+	0xFF,										//verify connect
+	0xFF,										//disconnect
+	0xFF,										//ping
+	MRTP_PROTOCOL_RELIABLE_CHANNEL_NUM,			//send reliable
+	MRTP_PROTOCOL_RELIABLE_CHANNEL_NUM,			//send fragement
+	0xFF,										//bandwidth limit
+	0xFF,										//throttleconfigure
+	MRTP_PROTOCOL_REDUNDANCY_NOACK_CHANNEL_NUM,	//send redundancy no ack
+	MRTP_PROTOCOL_REDUNDANCY_NOACK_CHANNEL_NUM, //send redundancy fragement no ack
+};
+
 char* commandName[] = {
 	"None",
 	"Ack",
@@ -85,21 +100,20 @@ static void mrtp_protocol_send_acknowledgements(MRtpHost * host, MRtpPeer * peer
 		buffer->data = command;
 		buffer->dataLength = sizeof(MRtpProtocolAcknowledge);
 
-#ifdef SENDANDRECEIVE
-		printf("add buffer [ack]: (%d) at channel: [%d]\n",
-			MRTP_NET_TO_HOST_16(command->header.sequenceNumber), acknowledgement->command.header.channelID);
-#endif // SENDANDRECEIVE
-
-
 		host->packetSize += buffer->dataLength;
 
 		reliableSequenceNumber = MRTP_HOST_TO_NET_16(acknowledgement->command.header.sequenceNumber);
 
 		command->header.command = MRTP_PROTOCOL_COMMAND_ACKNOWLEDGE;
-		command->header.channelID = acknowledgement->command.header.channelID;
 		command->header.sequenceNumber = reliableSequenceNumber;
 		command->acknowledge.receivedReliableSequenceNumber = reliableSequenceNumber;
 		command->acknowledge.receivedSentTime = MRTP_HOST_TO_NET_16(acknowledgement->sentTime);
+
+#ifdef SENDANDRECEIVE
+		printf("add buffer [ack]: (%d) at channel: [%d]\n",
+			MRTP_NET_TO_HOST_16(command->header.sequenceNumber),
+			channelIDs[acknowledgement->command.header.command & MRTP_PROTOCOL_COMMAND_MASK]);
+#endif // SENDANDRECEIVE
 
 		//如果是断开连接的确认，将peer状态改为ZOMBIE
 		if ((acknowledgement->command.header.command & MRTP_PROTOCOL_COMMAND_MASK) == MRTP_PROTOCOL_COMMAND_DISCONNECT)
@@ -269,6 +283,7 @@ static int mrtp_protocol_send_reliable_commands(MRtpHost * host, MRtpPeer * peer
 	MRtpChannel *channel;
 	mrtp_uint16 commandWindow;
 	size_t commandSize;
+	mrtp_uint8 channelID;
 	int windowExceeded = 0, windowWrap = 0, canPing = 1;
 
 	currentCommand = mrtp_list_begin(&peer->outgoingReliableCommands);
@@ -276,8 +291,8 @@ static int mrtp_protocol_send_reliable_commands(MRtpHost * host, MRtpPeer * peer
 	while (currentCommand != mrtp_list_end(&peer->outgoingReliableCommands)) {
 
 		outgoingCommand = (MRtpOutgoingCommand *)currentCommand;
-
-		channel = outgoingCommand->command.header.channelID < peer->channelCount ? &peer->channels[outgoingCommand->command.header.channelID] : NULL;
+		channelID = channelIDs[outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK];
+		channel = channelID < peer->channelCount ? &peer->channels[channelID] : NULL;
 		commandWindow = outgoingCommand->sequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
 
 		if (channel != NULL) {
@@ -376,8 +391,7 @@ static int mrtp_protocol_send_reliable_commands(MRtpHost * host, MRtpPeer * peer
 #ifdef SENDANDRECEIVE
 		printf("add buffer [%s]: (%d) at channel[%d]\n",
 			commandName[outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK],
-			MRTP_NET_TO_HOST_16(outgoingCommand->command.header.sequenceNumber),
-			outgoingCommand->command.header.channelID);
+			MRTP_NET_TO_HOST_16(outgoingCommand->command.header.sequenceNumber), channelID);
 #endif // SENDANDRECEIVE
 
 		++peer->packetsSent;
@@ -693,7 +707,7 @@ static int mrtp_protocol_handle_acknowledge(MRtpHost * host, MRtpEvent * event,
 
 	receivedReliableSequenceNumber = MRTP_NET_TO_HOST_16(command->acknowledge.receivedReliableSequenceNumber);
 
-	commandNumber = mrtp_protocol_remove_sent_reliable_command(peer, receivedReliableSequenceNumber, command->header.channelID);
+	commandNumber = mrtp_protocol_remove_sent_reliable_command(peer, receivedReliableSequenceNumber);
 
 	switch (peer->state)
 	{
@@ -833,7 +847,6 @@ static MRtpPeer * mrtp_protocol_handle_connect(MRtpHost * host, MRtpProtocolHead
 		windowSize = MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE;
 
 	verifyCommand.header.command = MRTP_PROTOCOL_COMMAND_VERIFY_CONNECT | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
-	verifyCommand.header.channelID = 0xFF;
 	verifyCommand.verifyConnect.outgoingPeerID = MRTP_HOST_TO_NET_16(peer->incomingPeerID);
 	verifyCommand.verifyConnect.incomingSessionID = incomingSessionID;
 	verifyCommand.verifyConnect.outgoingSessionID = outgoingSessionID;
@@ -915,7 +928,7 @@ static int mrtp_protocol_handle_verify_connect(MRtpHost * host, MRtpEvent * even
 
 //从sentReliableCommands队列中确认之前发送的command
 static MRtpProtocolCommand mrtp_protocol_remove_sent_reliable_command(MRtpPeer * peer,
-	mrtp_uint16 reliableSequenceNumber, mrtp_uint8 channelID) {
+	mrtp_uint16 reliableSequenceNumber) {
 
 	MRtpOutgoingCommand * outgoingCommand = NULL;
 	MRtpListIterator currentCommand;
@@ -927,8 +940,7 @@ static MRtpProtocolCommand mrtp_protocol_remove_sent_reliable_command(MRtpPeer *
 		currentCommand = mrtp_list_next(currentCommand))
 	{
 		outgoingCommand = (MRtpOutgoingCommand *)currentCommand;
-		if (outgoingCommand->sequenceNumber == reliableSequenceNumber &&
-			outgoingCommand->command.header.channelID == channelID)
+		if (outgoingCommand->sequenceNumber == reliableSequenceNumber)
 			break;
 	}
 
@@ -944,8 +956,7 @@ static MRtpProtocolCommand mrtp_protocol_remove_sent_reliable_command(MRtpPeer *
 
 			if (outgoingCommand->sendAttempts < 1) return MRTP_PROTOCOL_COMMAND_NONE;
 
-			if (outgoingCommand->sequenceNumber == reliableSequenceNumber &&
-				outgoingCommand->command.header.channelID == channelID)
+			if (outgoingCommand->sequenceNumber == reliableSequenceNumber)
 				break;
 		}
 
@@ -957,6 +968,8 @@ static MRtpProtocolCommand mrtp_protocol_remove_sent_reliable_command(MRtpPeer *
 
 	if (outgoingCommand == NULL)
 		return MRTP_PROTOCOL_COMMAND_NONE;
+
+	mrtp_uint8 channelID = channelIDs[outgoingCommand->command.header.command& MRTP_PROTOCOL_COMMAND_MASK];
 
 	if (channelID < peer->channelCount) {
 
@@ -1073,8 +1086,7 @@ static int mrtp_protocol_handle_send_reliable(MRtpHost * host, MRtpPeer * peer, 
 {
 	size_t dataLength;
 
-	if (command->header.channelID >= peer->channelCount ||
-		(peer->state != MRTP_PEER_STATE_CONNECTED && peer->state != MRTP_PEER_STATE_DISCONNECT_LATER))
+	if (peer->state != MRTP_PEER_STATE_CONNECTED && peer->state != MRTP_PEER_STATE_DISCONNECT_LATER)
 		return -1;
 
 	dataLength = MRTP_NET_TO_HOST_16(command->sendReliable.dataLength);
@@ -1091,8 +1103,8 @@ static int mrtp_protocol_handle_send_reliable(MRtpHost * host, MRtpPeer * peer, 
 	return 0;
 }
 
-static int mrtp_protocol_handle_send_fragment(MRtpHost * host, MRtpPeer * peer, const MRtpProtocol * command,
-	mrtp_uint8 ** currentData)
+static int mrtp_protocol_handle_send_fragment(MRtpHost * host, MRtpPeer * peer,
+	const MRtpProtocol * command, mrtp_uint8 ** currentData)
 {
 	mrtp_uint32 fragmentNumber,
 		fragmentCount,
@@ -1105,8 +1117,7 @@ static int mrtp_protocol_handle_send_fragment(MRtpHost * host, MRtpPeer * peer, 
 	MRtpListIterator currentCommand;
 	MRtpIncomingCommand * startCommand = NULL;
 
-	if (command->header.channelID >= peer->channelCount ||
-		(peer->state != MRTP_PEER_STATE_CONNECTED && peer->state != MRTP_PEER_STATE_DISCONNECT_LATER))
+	if (peer->state != MRTP_PEER_STATE_CONNECTED && peer->state != MRTP_PEER_STATE_DISCONNECT_LATER)
 		return -1;
 
 	fragmentLength = MRTP_NET_TO_HOST_16(command->sendFragment.dataLength);
@@ -1116,7 +1127,9 @@ static int mrtp_protocol_handle_send_fragment(MRtpHost * host, MRtpPeer * peer, 
 		*currentData > & host->receivedData[host->receivedDataLength])
 		return -1;
 
-	channel = &peer->channels[command->header.channelID];
+	mrtp_uint8 channelID = channelIDs[command->header.command & MRTP_PROTOCOL_COMMAND_MASK];
+
+	channel = &peer->channels[channelID];
 	startSequenceNumber = MRTP_NET_TO_HOST_16(command->sendFragment.startSequenceNumber);
 	startWindow = startSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
 	currentWindow = channel->incomingSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
@@ -1198,12 +1211,11 @@ static int mrtp_protocol_handle_send_fragment(MRtpHost * host, MRtpPeer * peer, 
 	return 0;
 }
 
-static int mrtp_protocol_handle_send_redundancy_noack(MRtpHost * host, MRtpPeer * peer, const MRtpProtocol * command,
-	mrtp_uint8 ** currentData)
+static int mrtp_protocol_handle_send_redundancy_noack(MRtpHost * host, MRtpPeer * peer,
+	const MRtpProtocol * command, mrtp_uint8 ** currentData)
 {
 	size_t dataLength;
-	if (command->header.channelID >= peer->channelCount ||
-		(peer->state != MRTP_PEER_STATE_CONNECTED && peer->state != MRTP_PEER_STATE_DISCONNECT_LATER))
+	if (peer->state != MRTP_PEER_STATE_CONNECTED && peer->state != MRTP_PEER_STATE_DISCONNECT_LATER)
 		return -1;
 	dataLength = MRTP_NET_TO_HOST_16(command->sendRedundancyNoAck.datalength);
 
@@ -1213,9 +1225,9 @@ static int mrtp_protocol_handle_send_redundancy_noack(MRtpHost * host, MRtpPeer 
 		*currentData > & host->receivedData[host->receivedDataLength])
 		return -1;
 
-	//if (mrtp_peer_queue_incoming_command(peer, command, (const mrtp_uint8 *)command + sizeof(MRtpProtocolSendReliable),
-	//	dataLength, MRTP_PACKET_FLAG_RELIABLE, 0) == NULL)
-	//	return -1;
+	if (mrtp_peer_queue_incoming_command(peer, command, (const mrtp_uint8 *)command + sizeof(MRtpProtocolSendReliable),
+		dataLength, MRTP_PACKET_FLAG_RELIABLE, 0) == NULL)
+		return -1;
 
 	return 0;
 
@@ -1250,8 +1262,6 @@ static int mrtp_protocol_handle_incoming_commands(MRtpHost * host, MRtpEvent * e
 	else {
 		peer = &host->peers[peerID];
 
-		//如果peer已经断开连接或者准备断开连接
-		//或者地址和peerID信息不匹配，则返回0
 		if (peer->state == MRTP_PEER_STATE_DISCONNECTED || peer->state == MRTP_PEER_STATE_ZOMBIE ||
 			((host->receivedAddress.host != peer->address.host ||
 				host->receivedAddress.port != peer->address.port) &&
@@ -1295,7 +1305,7 @@ static int mrtp_protocol_handle_incoming_commands(MRtpHost * host, MRtpEvent * e
 		command->header.sequenceNumber = MRTP_NET_TO_HOST_16(command->header.sequenceNumber);
 #ifdef SENDANDRECEIVE
 		printf("receive [%s]: (%d) from peer: <%d> at channel: [%d]\n", commandName[commandNumber],
-			command->header.sequenceNumber, peerID, command->header.channelID);
+			command->header.sequenceNumber, peerID, channelIDs[command->header.command & MRTP_PROTOCOL_COMMAND_MASK]);
 #endif // SENDANDRECEIVE
 
 		switch (commandNumber) {
@@ -1315,7 +1325,6 @@ static int mrtp_protocol_handle_incoming_commands(MRtpHost * host, MRtpEvent * e
 			break;
 
 		case MRTP_PROTOCOL_COMMAND_VERIFY_CONNECT:
-			//收到连接请求方返回验证连接请求
 			if (mrtp_protocol_handle_verify_connect(host, event, peer, command))
 				goto commandError;
 			break;
@@ -1350,7 +1359,6 @@ static int mrtp_protocol_handle_incoming_commands(MRtpHost * host, MRtpEvent * e
 				goto commandError;
 			break;
 			/*
-
 			case MRTP_PROTOCOL_COMMAND_THROTTLE_CONFIGURE:
 			if (mrtp_protocol_handle_throttle_configure(host, peer, command))
 			goto commandError;
