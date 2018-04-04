@@ -111,7 +111,7 @@ static void mrtp_protocol_send_acknowledgements(MRtpHost * host, MRtpPeer * peer
 
 #ifdef SENDANDRECEIVE
 		printf("add buffer [ack]: (%d) at channel: [%d]\n",
-			MRTP_NET_TO_HOST_16(command->header.sequenceNumber), 
+			MRTP_NET_TO_HOST_16(command->header.sequenceNumber),
 			channelIDs[acknowledgement->command.header.command & MRTP_PROTOCOL_COMMAND_MASK]);
 #endif // SENDANDRECEIVE
 
@@ -391,7 +391,7 @@ static int mrtp_protocol_send_reliable_commands(MRtpHost * host, MRtpPeer * peer
 #ifdef SENDANDRECEIVE
 		printf("add buffer [%s]: (%d) at channel[%d]\n",
 			commandName[outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK],
-			MRTP_NET_TO_HOST_16(outgoingCommand->command.header.sequenceNumber),channelID);
+			MRTP_NET_TO_HOST_16(outgoingCommand->command.header.sequenceNumber), channelID);
 #endif // SENDANDRECEIVE
 
 		++peer->packetsSent;
@@ -523,6 +523,7 @@ static int mrtp_protocol_send_redundancy_outgoing_commands(MRtpHost * host, MRtp
 				}
 
 				sentLength = mrtp_socket_send(host->socket, &currentPeer->address, host->buffers, host->bufferCount);
+
 #ifdef SENDANDRECEIVE
 				printf("send redundancy %d to peer: <%d>\n", sentLength, currentPeer->incomingPeerID);
 #endif // SENDANDRECEIVE
@@ -1103,7 +1104,7 @@ static int mrtp_protocol_handle_send_reliable(MRtpHost * host, MRtpPeer * peer, 
 	return 0;
 }
 
-static int mrtp_protocol_handle_send_fragment(MRtpHost * host, MRtpPeer * peer, 
+static int mrtp_protocol_handle_send_fragment(MRtpHost * host, MRtpPeer * peer,
 	const MRtpProtocol * command, mrtp_uint8 ** currentData)
 {
 	mrtp_uint32 fragmentNumber,
@@ -1211,7 +1212,7 @@ static int mrtp_protocol_handle_send_fragment(MRtpHost * host, MRtpPeer * peer,
 	return 0;
 }
 
-static int mrtp_protocol_handle_send_redundancy_noack(MRtpHost * host, MRtpPeer * peer, 
+static int mrtp_protocol_handle_send_redundancy_noack(MRtpHost * host, MRtpPeer * peer,
 	const MRtpProtocol * command, mrtp_uint8 ** currentData)
 {
 	size_t dataLength;
@@ -1226,7 +1227,7 @@ static int mrtp_protocol_handle_send_redundancy_noack(MRtpHost * host, MRtpPeer 
 		return -1;
 
 	if (mrtp_peer_queue_incoming_command(peer, command, (const mrtp_uint8 *)command + sizeof(MRtpProtocolSendReliable),
-		dataLength, MRTP_PACKET_FLAG_RELIABLE, 0) == NULL)
+		dataLength, MRTP_PACKET_FLAG_REDUNDANCY_NO_ACK, 0) == NULL)
 		return -1;
 
 	return 0;
@@ -1301,6 +1302,9 @@ static int mrtp_protocol_handle_incoming_commands(MRtpHost * host, MRtpEvent * e
 		//如果peer不存在且不是请求连接的command，则跳出循环
 		if (peer == NULL && commandNumber != MRTP_PROTOCOL_COMMAND_CONNECT)
 			break;
+		else if (peer != NULL) {
+			peer->lastReceiveTime = host->serviceTime;
+		}
 
 		command->header.sequenceNumber = MRTP_NET_TO_HOST_16(command->header.sequenceNumber);
 #ifdef SENDANDRECEIVE

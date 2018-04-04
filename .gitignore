@@ -38,3 +38,6 @@ Release/
 *.vcxproj
 *.filters
 *.sln
+
+*.rar
+*.zip

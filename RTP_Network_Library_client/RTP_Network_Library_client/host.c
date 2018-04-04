@@ -158,6 +158,34 @@ MRtpPeer *mrtp_host_connect(MRtpHost * host, const MRtpAddress * address) {
 	return currentPeer;
 }
 
+void mrtp_host_free_redundancy_buffers(MRtpHost* host) {
+
+	MRtpPeer* currentPeer;
+	for (currentPeer = host->peers; currentPeer < &host->peers[host->peerCount]; ++currentPeer) {
+		if (currentPeer->redundancyNoAckBuffers) {
+
+			for (int i = 0; i < currentPeer->redundancyNum; i++) {
+				mrtp_protocol_remove_redundancy_buffer_commands(&currentPeer->redundancyNoAckBuffers[i]);
+			}
+			mrtp_free(currentPeer->redundancyNoAckBuffers);
+
+			currentPeer->redundancyNoAckBuffers = NULL;
+			currentPeer->currentRedundancyNoAckBufferNum = 0;
+		}
+
+		if (currentPeer->redundancyBuffers) {
+
+			for (int i = 0; i < MRTP_PROTOCOL_MAXIMUM_REDUNDNACY_BUFFER_SIZE; i++) {
+				mrtp_protocol_remove_redundancy_buffer_commands(&currentPeer->redundancyBuffers[i]);
+			}
+			mrtp_free(currentPeer->redundancyBuffers);
+
+			currentPeer->redundancyBuffers = NULL;
+			currentPeer->currentRedundancyBufferNum = 0;
+		}
+	}
+
+}
 
 void mrtp_host_destroy(MRtpHost * host) {
 	MRtpPeer * currentPeer;
@@ -166,6 +194,8 @@ void mrtp_host_destroy(MRtpHost * host) {
 		return;
 
 	mrtp_socket_destroy(host->socket);
+
+	mrtp_host_free_redundancy_buffers(host);
 
 	for (currentPeer = host->peers; currentPeer < &host->peers[host->peerCount]; ++currentPeer) {
 		mrtp_peer_reset(currentPeer);

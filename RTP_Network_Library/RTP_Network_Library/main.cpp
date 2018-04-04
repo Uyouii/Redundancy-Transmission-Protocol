@@ -41,28 +41,31 @@ int main(int argc, char ** argv) {
 
 	MRtpEvent event;
 	/* Wait up to 1000 milliseconds for an event. */
-	while (mrtp_host_service(server, &event, 100) >= 0) {
-		switch (event.type) {
-		case MRTP_EVENT_TYPE_CONNECT:
-			printf("A new client connected from %x:%u.\n",
-				event.peer->address.host,
-				event.peer->address.port);
-			break;
-		case MRTP_EVENT_TYPE_RECEIVE:
-			/*printf("A packet of length %u containing %s was received on channel %u.\n",
-				event.packet->dataLength,
-				event.packet->data,
-				event.channelID);*/
-			/* Clean up the packet now that we're done using it. */
-			mrtp_packet_destroy(event.packet);
-			break;
+	while (true) {
+		while (mrtp_host_service(server, &event, 100) >= 1) {
+			switch (event.type) {
+			case MRTP_EVENT_TYPE_CONNECT:
+				printf("A new client connected from %x:%u.\n",
+					event.peer->address.host,
+					event.peer->address.port);
+				break;
+			case MRTP_EVENT_TYPE_RECEIVE:
+				printf("A packet of length %u containing %s was received on channel %u.\n",
+					event.packet->dataLength,
+					event.packet->data,
+					event.channelID);
+				/* Clean up the packet now that we're done using it. */
+				mrtp_packet_destroy(event.packet);
+				break;
 
-		case MRTP_EVENT_TYPE_DISCONNECT:
-			printf("disconnected.\n");
-			event.peer->data = NULL;
-			break;
+			case MRTP_EVENT_TYPE_DISCONNECT:
+				printf("disconnected.\n");
+				event.peer->data = NULL;
+				break;
+			}
 		}
 	}
+	
 
 	mrtp_host_destroy(server);
 
