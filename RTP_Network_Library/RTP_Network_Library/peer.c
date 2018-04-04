@@ -541,11 +541,11 @@ void mrtp_peer_dispatch_incoming_redundancy_noack_commands(MRtpPeer * peer, MRtp
 	MRtpListIterator currentCommand, startCommand, droppedCommand;
 
 	currentCommand = startCommand = droppedCommand = mrtp_list_begin(&channel->incomingCommands);
-	for (; currentCommand != mrtp_list_end(&channel->incomingCommands); 
-		currentCommand = mrtp_list_next(currentCommand)) 
+	for (; currentCommand != mrtp_list_end(&channel->incomingCommands);
+		currentCommand = mrtp_list_next(currentCommand))
 	{
 		MRtpIncomingCommand * incomingCommand = (MRtpIncomingCommand*)currentCommand;
-		
+
 		if (incomingCommand->fragmentsRemaining <= 0) {
 			channel->incomingSequenceNumber = incomingCommand->sequenceNumber;
 			continue;
@@ -579,7 +579,7 @@ void mrtp_peer_dispatch_incoming_redundancy_noack_commands(MRtpPeer * peer, MRtp
 		droppedCommand = currentCommand;
 	}
 
-	mrtp_peer_remove_incoming_commands(&channel->incomingCommands, 
+	mrtp_peer_remove_incoming_commands(&channel->incomingCommands,
 		mrtp_list_begin(&channel->incomingCommands), droppedCommand);
 
 }
@@ -725,20 +725,20 @@ void mrtp_peer_reset_redundancy_noack_buffer(MRtpPeer* peer, size_t redundancyNu
 	if (redundancyNum == peer->redundancyNum && !peer->redundancyNoAckBuffers) {
 		peer->currentRedundancyNoAckBufferNum = 0;
 
-		for (int i = 0; i < redundancyNum; i++) {
+		for (int i = 0; i < redundancyNum + 1; i++) {
 			mrtp_protocol_remove_redundancy_buffer_commands(&peer->redundancyNoAckBuffers[i]);
 			memset(&peer->redundancyNoAckBuffers[i], 0, sizeof(MRtpRedundancyBuffer));
 			mrtp_list_clear(&peer->redundancyNoAckBuffers[i].sentCommands);
 		}
 	}
 	else if (peer->redundancyNoAckBuffers != NULL) {
-		for (int i = 0; i < redundancyNum; i++) {
+		for (int i = 0; i < redundancyNum + 1; i++) {
 			mrtp_protocol_remove_redundancy_buffer_commands(&peer->redundancyNoAckBuffers[i]);
 		}
 		mrtp_free(peer->redundancyNoAckBuffers);
 		peer->redundancyNum = redundancyNum;
-		peer->redundancyNoAckBuffers = mrtp_malloc(peer->redundancyNum * sizeof(MRtpRedundancyBuffer));
-		for (int i = 0; i < peer->redundancyNum; i++) {
+		peer->redundancyNoAckBuffers = mrtp_malloc((peer->redundancyNum + 1) * sizeof(MRtpRedundancyBuffer));
+		for (int i = 0; i < peer->redundancyNum + 1; i++) {
 			memset(&peer->redundancyNoAckBuffers[i], 0, sizeof(MRtpRedundancyBuffer));
 			mrtp_list_clear(&peer->redundancyNoAckBuffers[i].sentCommands);
 		}
@@ -746,8 +746,8 @@ void mrtp_peer_reset_redundancy_noack_buffer(MRtpPeer* peer, size_t redundancyNu
 	}
 	else {
 		peer->redundancyNum = redundancyNum;
-		peer->redundancyNoAckBuffers = mrtp_malloc(peer->redundancyNum * sizeof(MRtpRedundancyBuffer));
-		for (int i = 0; i < peer->redundancyNum; i++) {
+		peer->redundancyNoAckBuffers = mrtp_malloc((peer->redundancyNum + 1) * sizeof(MRtpRedundancyBuffer));
+		for (int i = 0; i < peer->redundancyNum + 1; i++) {
 			memset(&peer->redundancyNoAckBuffers[i], 0, sizeof(MRtpRedundancyBuffer));
 			mrtp_list_clear(&peer->redundancyNoAckBuffers[i].sentCommands);
 		}

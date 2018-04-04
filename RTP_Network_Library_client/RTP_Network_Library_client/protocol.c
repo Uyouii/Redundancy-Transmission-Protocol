@@ -268,6 +268,84 @@ void mrtp_protocol_remove_redundancy_buffer_commands(MRtpRedundancyBuffer* mrtpR
 	}
 }
 
+static int mrtp_protocol_send_redundancy_outgoing_commands(MRtpHost * host, MRtpEvent * event, int checkForTimeouts) {
+
+	mrtp_uint8 headerData[sizeof(MRtpProtocolHeader) + sizeof(mrtp_uint32)];
+	MRtpProtocolHeader *header = (MRtpProtocolHeader *)headerData;
+	MRtpPeer *currentPeer;
+	int sentLength;
+
+	host->continueSending = 1;
+	while (host->continueSending) {
+		host->continueSending = 0;
+		for (currentPeer = host->peers; currentPeer < &host->peers[host->peerCount]; ++currentPeer) {
+
+			if (!currentPeer->redundancyNoAckBuffers || currentPeer->state == MRTP_PEER_STATE_DISCONNECTED || currentPeer->state == MRTP_PEER_STATE_ZOMBIE)
+				continue;
+
+			host->headerFlags = 0;
+			host->commandCount = 0;
+			host->bufferCount = 1;
+			host->packetSize = sizeof(MRtpProtocolHeader);
+
+			if (!mrtp_list_empty(&currentPeer->outgoingRedundancyNoAckCommands))
+				mrtp_protocol_send_redundancy_noack_commands(host, currentPeer);
+
+			MRtpRedundancyBuffer* currentRedundancyNoackBuffer = &currentPeer->redundancyNoAckBuffers[currentPeer->currentRedundancyNoAckBufferNum];
+
+			if (currentRedundancyNoackBuffer->buffercount > 0) {
+
+				host->buffers->data = headerData;
+				host->buffers->dataLength = (size_t) & ((MRtpProtocolHeader *)0)->sentTime;
+				MRtpBuffer * buffer = &host->buffers[host->bufferCount];
+
+				if (currentPeer->outgoingPeerID < MRTP_PROTOCOL_MAXIMUM_PEER_ID)
+					host->headerFlags |= currentPeer->outgoingSessionID << MRTP_PROTOCOL_HEADER_SESSION_SHIFT;
+				header->peerID = MRTP_HOST_TO_NET_16(currentPeer->outgoingPeerID | host->headerFlags);
+
+				currentPeer->lastSendTime = host->serviceTime;
+
+				// 将每个peer 缓存的buffer中的数据移动到host的buffer中
+				for (int i = currentPeer->redundancyNum - 1; i >= 0; i--) {
+					int num = (currentPeer->currentRedundancyNoAckBufferNum - i + currentPeer->redundancyNum + 1)
+						% (currentPeer->redundancyNum + 1);
+					if (currentPeer->redundancyNoAckBuffers[num].buffercount > 0) {
+						for (int j = 0; j < currentPeer->redundancyNoAckBuffers[num].buffercount; j++) {
+							buffer->data = currentPeer->redundancyNoAckBuffers[num].buffers[j].data;
+							buffer->dataLength = currentPeer->redundancyNoAckBuffers[num].buffers[j].dataLength;
+
+							++buffer;
+							++host->bufferCount;
+						}
+					}
+				}
+
+				sentLength = mrtp_socket_send(host->socket, &currentPeer->address, host->buffers, host->bufferCount);
+
+#ifdef SENDANDRECEIVE
+				printf("send redundancy %d to peer: <%d>\n", sentLength, currentPeer->incomingPeerID);
+#endif // SENDANDRECEIVE
+
+				if (sentLength < 0)
+					return -1;
+
+				host->totalSentData += sentLength;
+				host->totalSentPackets++;
+				currentPeer->currentRedundancyNoAckBufferNum = (currentPeer->currentRedundancyNoAckBufferNum + 1)
+					% (currentPeer->redundancyNum + 1);
+				currentRedundancyNoackBuffer = &currentPeer->redundancyNoAckBuffers[currentPeer->currentRedundancyNoAckBufferNum];
+				if (currentRedundancyNoackBuffer->buffercount >= 0) {
+					mrtp_protocol_remove_redundancy_buffer_commands(currentRedundancyNoackBuffer);
+					currentRedundancyNoackBuffer->buffercount = 0;
+					currentRedundancyNoackBuffer->packetSize = 0;
+				}
+			}
+		}
+	}
+	return 0;
+}
+
+
 //发送reliable outgoing commands
 //如果发送的数据没有超过发送窗口的大小的限制或者host的commands和buffer没有超过限制
 //则将该command从outgoingReliableCommands转移到sentReliableCommands
@@ -413,9 +491,7 @@ static int mrtp_protocol_send_redundancy_noack_commands(MRtpHost * host, MRtpPee
 	MRtpRedundancyBuffer* currentRedundancyBuffer = &peer->redundancyNoAckBuffers[redundancyNum];
 
 	if (currentRedundancyBuffer->buffercount != 0) {
-		mrtp_protocol_remove_redundancy_buffer_commands(currentRedundancyBuffer);
-		currentRedundancyBuffer->buffercount = 0;
-		currentRedundancyBuffer->packetSize = 0;
+		return 0;	//之前的还没发送
 	}
 
 	MRtpBuffer * buffer = &currentRedundancyBuffer->buffers[currentRedundancyBuffer->buffercount];
@@ -457,6 +533,13 @@ static int mrtp_protocol_send_redundancy_noack_commands(MRtpHost * host, MRtpPee
 
 		++buffer;
 
+#ifdef SENDANDRECEIVE
+		printf("add buffer [%s]: (%d) at channel[%d]\n",
+			commandName[outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK],
+			MRTP_NET_TO_HOST_16(outgoingCommand->command.header.sequenceNumber),
+			channelIDs[outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK]);
+#endif // SENDANDRECEIVE
+
 	}
 	currentRedundancyBuffer->buffercount = buffer - currentRedundancyBuffer->buffers;
 
@@ -470,84 +553,8 @@ static int mrtp_protocol_send_redundancy_noack_commands(MRtpHost * host, MRtpPee
 	return 0;
 }
 
-static int mrtp_protocol_send_redundancy_outgoing_commands(MRtpHost * host, MRtpEvent * event, int checkForTimeouts) {
 
-	mrtp_uint8 headerData[sizeof(MRtpProtocolHeader) + sizeof(mrtp_uint32)];
-	MRtpProtocolHeader *header = (MRtpProtocolHeader *)headerData;
-	MRtpPeer *currentPeer;
-	int sentLength;
-
-	host->continueSending = 1;
-	while (host->continueSending) {
-		host->continueSending = 0;
-		for (currentPeer = host->peers; currentPeer < &host->peers[host->peerCount]; ++currentPeer) {
-
-			if (!currentPeer->redundancyNoAckBuffers || currentPeer->state == MRTP_PEER_STATE_DISCONNECTED || currentPeer->state == MRTP_PEER_STATE_ZOMBIE)
-				continue;
-
-			host->headerFlags = 0;
-			host->commandCount = 0;
-			host->bufferCount = 1;
-			host->packetSize = sizeof(MRtpProtocolHeader);
-
-			if (!mrtp_list_empty(&currentPeer->outgoingRedundancyNoAckCommands))
-				mrtp_protocol_send_redundancy_noack_commands(host, currentPeer);
-
-			MRtpRedundancyBuffer* currentRedundancyNoackBuffer = &currentPeer->redundancyNoAckBuffers[currentPeer->currentRedundancyNoAckBufferNum];
-
-			if (currentRedundancyNoackBuffer->buffercount > 0) {
-
-				host->buffers->data = headerData;
-				host->buffers->dataLength = (size_t) & ((MRtpProtocolHeader *)0)->sentTime;
-				MRtpBuffer * buffer = &host->buffers[host->bufferCount];
-
-				if (currentPeer->outgoingPeerID < MRTP_PROTOCOL_MAXIMUM_PEER_ID)
-					host->headerFlags |= currentPeer->outgoingSessionID << MRTP_PROTOCOL_HEADER_SESSION_SHIFT;
-				header->peerID = MRTP_HOST_TO_NET_16(currentPeer->outgoingPeerID | host->headerFlags);
-
-				currentPeer->lastSendTime = host->serviceTime;
-
-				// 将每个peer 缓存的buffer中的数据移动到host的buffer中
-				for (int i = currentPeer->redundancyNum - 1; i >= 0; i--) {
-					int num = (currentPeer->currentRedundancyNoAckBufferNum - i + currentPeer->redundancyNum)
-						% currentPeer->redundancyNum;
-					if (currentPeer->redundancyNoAckBuffers[num].buffercount > 0) {
-						for (int j = 0; j < currentPeer->redundancyNoAckBuffers[num].buffercount; j++) {
-							buffer->data = currentPeer->redundancyNoAckBuffers[num].buffers[j].data;
-							buffer->dataLength = currentPeer->redundancyNoAckBuffers[num].buffers[j].dataLength;
-
-							++buffer;
-							++host->bufferCount;
-						}
-					}
-				}
-
-				sentLength = mrtp_socket_send(host->socket, &currentPeer->address, host->buffers, host->bufferCount);
-
-#ifdef SENDANDRECEIVE
-				printf("send redundancy %d to peer: <%d>\n", sentLength, currentPeer->incomingPeerID);
-#endif // SENDANDRECEIVE
-
-				if (sentLength < 0)
-					return -1;
-
-				host->totalSentData += sentLength;
-				host->totalSentPackets++;
-				currentPeer->currentRedundancyNoAckBufferNum = (currentPeer->currentRedundancyNoAckBufferNum + 1)
-					% currentPeer->redundancyNum;
-				currentRedundancyNoackBuffer = &currentPeer->redundancyNoAckBuffers[currentPeer->currentRedundancyNoAckBufferNum];
-				if (currentRedundancyNoackBuffer->buffercount != 0) {
-					mrtp_protocol_remove_redundancy_buffer_commands(currentRedundancyNoackBuffer);
-					currentRedundancyNoackBuffer->buffercount = 0;
-					currentRedundancyNoackBuffer->packetSize = 0;
-				}
-			}
-		}
-	}
-	return 0;
-}
-
-static int mrtp_protocol_send_reliable_outgoing_commands(MRtpHost * host, MRtpEvent * event, int checkForTimeouts) {
+static int mrtp_protocol_send_outgoing_commands(MRtpHost * host, MRtpEvent * event, int checkForTimeouts) {
 
 	mrtp_uint8 headerData[sizeof(MRtpProtocolHeader) + sizeof(mrtp_uint32)];
 	MRtpProtocolHeader *header = (MRtpProtocolHeader *)headerData;
@@ -593,34 +600,42 @@ static int mrtp_protocol_send_reliable_outgoing_commands(MRtpHost * host, MRtpEv
 				mrtp_protocol_send_reliable_commands(host, currentPeer);	//将outgoing command下的command放到sent队列下
 			}
 
-			if (host->commandCount == 0)
-				continue;
+			if (!mrtp_list_empty(&currentPeer->outgoingRedundancyNoAckCommands))
+				mrtp_protocol_send_redundancy_noack_commands(host, currentPeer);
 
-			if (currentPeer->packetLossEpoch == 0)
-				currentPeer->packetLossEpoch = host->serviceTime;
-			else if (MRTP_TIME_DIFFERENCE(host->serviceTime, currentPeer->packetLossEpoch) >= MRTP_PEER_PACKET_LOSS_INTERVAL &&
-				currentPeer->packetsSent > 0) {
+			MRtpRedundancyBuffer* currentRedundancyNoackBuffer =
+				&currentPeer->redundancyNoAckBuffers[currentPeer->currentRedundancyNoAckBufferNum];
 
-				mrtp_uint32 packetLoss = currentPeer->packetsLost * MRTP_PEER_PACKET_LOSS_SCALE / currentPeer->packetsSent;
+			//if (host->commandCount == 0 && (!currentRedundancyNoackBuffer ||
+			//	currentRedundancyNoackBuffer->buffercount <= 0))
+			//	continue;
 
-				currentPeer->packetLossVariance -= currentPeer->packetLossVariance / 4;
+			if (host->bufferCount > 1 ||
+				(currentRedundancyNoackBuffer && currentRedundancyNoackBuffer->buffercount > 0))
+			{
+				if (currentPeer->packetLossEpoch == 0)
+					currentPeer->packetLossEpoch = host->serviceTime;
+				else if (MRTP_TIME_DIFFERENCE(host->serviceTime, currentPeer->packetLossEpoch) >= MRTP_PEER_PACKET_LOSS_INTERVAL &&
+					currentPeer->packetsSent > 0) {
 
-				if (packetLoss >= currentPeer->packetLoss) {
-					currentPeer->packetLoss += (packetLoss - currentPeer->packetLoss) / 8;
-					currentPeer->packetLossVariance += (packetLoss - currentPeer->packetLoss) / 4;
+					mrtp_uint32 packetLoss = currentPeer->packetsLost * MRTP_PEER_PACKET_LOSS_SCALE / currentPeer->packetsSent;
+
+					currentPeer->packetLossVariance -= currentPeer->packetLossVariance / 4;
+
+					if (packetLoss >= currentPeer->packetLoss) {
+						currentPeer->packetLoss += (packetLoss - currentPeer->packetLoss) / 8;
+						currentPeer->packetLossVariance += (packetLoss - currentPeer->packetLoss) / 4;
+					}
+					else {
+						currentPeer->packetLoss -= (currentPeer->packetLoss - packetLoss) / 8;
+						currentPeer->packetLossVariance += (currentPeer->packetLoss - packetLoss) / 4;
+					}
+
+					currentPeer->packetLossEpoch = host->serviceTime;
+					currentPeer->packetsSent = 0;
+					currentPeer->packetsLost = 0;
 				}
-				else {
-					currentPeer->packetLoss -= (currentPeer->packetLoss - packetLoss) / 8;
-					currentPeer->packetLossVariance += (currentPeer->packetLoss - packetLoss) / 4;
-				}
 
-				currentPeer->packetLossEpoch = host->serviceTime;
-				currentPeer->packetsSent = 0;
-				currentPeer->packetsLost = 0;
-			}
-
-			if (host->bufferCount > 1) {
-				//设置host的header
 				host->buffers->data = headerData;
 				if (host->headerFlags & MRTP_PROTOCOL_HEADER_FLAG_SENT_TIME) {
 					header->sentTime = MRTP_HOST_TO_NET_16(host->serviceTime & 0xFFFF);
@@ -634,7 +649,61 @@ static int mrtp_protocol_send_reliable_outgoing_commands(MRtpHost * host, MRtpEv
 
 				currentPeer->lastSendTime = host->serviceTime;
 
+				if (currentRedundancyNoackBuffer && currentRedundancyNoackBuffer->buffercount > 0) {
+
+					if (currentPeer->currentRedundancyNoAckBufferNum == 0) {
+						int a = 1;
+					}
+					int redundancyNoackBufferCount = 0;
+					int redundancyNoackPacketSize = 0;
+
+					for (int i = currentPeer->redundancyNum - 1; i >= 0; i--) {
+						int num = (currentPeer->currentRedundancyNoAckBufferNum - i + currentPeer->redundancyNum + 1)
+							% (currentPeer->redundancyNum + 1);
+						if (currentPeer->redundancyNoAckBuffers[num].buffercount > 0) {
+							redundancyNoackBufferCount += currentPeer->redundancyNoAckBuffers[num].buffercount;
+							redundancyNoackPacketSize += currentPeer->redundancyNoAckBuffers[num].packetSize;
+						}
+					}
+
+					MRtpBuffer* buffer = &host->buffers[host->bufferCount];
+
+					if (host->bufferCount + redundancyNoackBufferCount <= sizeof(host->buffers) / sizeof(MRtpBuffer) &&
+						host->mtu > host->packetSize + redundancyNoackPacketSize) //合并发送 
+					{
+						// 将每个peer 缓存的buffer中的数据移动到host的buffer中
+						for (int i = currentPeer->redundancyNum - 1; i >= 0; i--) {
+							int num = (currentPeer->currentRedundancyNoAckBufferNum - i + currentPeer->redundancyNum + 1)
+								% (currentPeer->redundancyNum + 1);
+							if (currentPeer->redundancyNoAckBuffers[num].buffercount > 0) {
+								for (int j = 0; j < currentPeer->redundancyNoAckBuffers[num].buffercount; j++) {
+									buffer->data = currentPeer->redundancyNoAckBuffers[num].buffers[j].data;
+									buffer->dataLength = currentPeer->redundancyNoAckBuffers[num].buffers[j].dataLength;
+
+									++buffer;
+									++host->bufferCount;
+								}
+							}
+						}
+
+						// clear current redundancy buffer
+						currentPeer->currentRedundancyNoAckBufferNum = (currentPeer->currentRedundancyNoAckBufferNum + 1)
+							% (currentPeer->redundancyNum + 1);
+						currentRedundancyNoackBuffer = &currentPeer->redundancyNoAckBuffers[currentPeer->currentRedundancyNoAckBufferNum];
+						if (currentRedundancyNoackBuffer->buffercount != 0) {
+							mrtp_protocol_remove_redundancy_buffer_commands(currentRedundancyNoackBuffer);
+							currentRedundancyNoackBuffer->buffercount = 0;
+							currentRedundancyNoackBuffer->packetSize = 0;
+						}
+					}
+					else {
+						host->continueSending = 1;
+					}
+
+				}
+
 				sentLength = mrtp_socket_send(host->socket, &currentPeer->address, host->buffers, host->bufferCount);
+
 #ifdef SENDANDRECEIVE
 				printf("send: %d to peer: <%d>\n", sentLength, currentPeer->incomingPeerID);
 #endif // SENDANDRECEIVE
@@ -650,6 +719,92 @@ static int mrtp_protocol_send_reliable_outgoing_commands(MRtpHost * host, MRtpEv
 	}
 
 	return 0;
+}
+
+static MRtpProtocolCommand mrtp_protocol_remove_sent_reliable_command(MRtpPeer * peer,
+	mrtp_uint16 reliableSequenceNumber) {
+
+	MRtpOutgoingCommand * outgoingCommand = NULL;
+	MRtpListIterator currentCommand;
+	MRtpProtocolCommand commandNumber;
+	int wasSent = 1;
+
+	for (currentCommand = mrtp_list_begin(&peer->sentReliableCommands);
+		currentCommand != mrtp_list_end(&peer->sentReliableCommands);
+		currentCommand = mrtp_list_next(currentCommand))
+	{
+		outgoingCommand = (MRtpOutgoingCommand *)currentCommand;
+		if (outgoingCommand->sequenceNumber == reliableSequenceNumber)
+			break;
+	}
+
+	//如果sentReliableCommands中没有找到响应的command，
+	//则在outgoingReliableCommands中继续检索（可能已经被判定为超时准备重新发送了）
+	if (currentCommand == mrtp_list_end(&peer->sentReliableCommands)) {
+
+		for (currentCommand = mrtp_list_begin(&peer->outgoingReliableCommands);
+			currentCommand != mrtp_list_end(&peer->outgoingReliableCommands);
+			currentCommand = mrtp_list_next(currentCommand))
+		{
+			outgoingCommand = (MRtpOutgoingCommand *)currentCommand;
+
+			if (outgoingCommand->sendAttempts < 1) return MRTP_PROTOCOL_COMMAND_NONE;
+
+			if (outgoingCommand->sequenceNumber == reliableSequenceNumber)
+				break;
+		}
+
+		if (currentCommand == mrtp_list_end(&peer->outgoingReliableCommands))
+			return MRTP_PROTOCOL_COMMAND_NONE;
+
+		wasSent = 0;
+	}
+
+	if (outgoingCommand == NULL)
+		return MRTP_PROTOCOL_COMMAND_NONE;
+
+	mrtp_uint8 channelID = channelIDs[outgoingCommand->command.header.command& MRTP_PROTOCOL_COMMAND_MASK];
+
+	if (channelID < peer->channelCount) {
+
+		MRtpChannel * channel = &peer->channels[channelID];
+		mrtp_uint16 reliableWindow = reliableSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
+		//将其占用的相应的窗口移除
+		if (channel->commandWindows[reliableWindow] > 0) {
+			--channel->commandWindows[reliableWindow];
+			if (!channel->commandWindows[reliableWindow])
+				channel->usedReliableWindows &= ~(1 << reliableWindow);
+		}
+	}
+
+	commandNumber = (MRtpProtocolCommand)(outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK);
+
+	//从相应的队列中移除这个command
+	mrtp_list_remove(&outgoingCommand->outgoingCommandList);
+
+	if (outgoingCommand->packet != NULL) {
+		if (wasSent)
+			peer->reliableDataInTransit -= outgoingCommand->fragmentLength;
+		--outgoingCommand->packet->referenceCount;
+
+		if (outgoingCommand->packet->referenceCount == 0) {
+			outgoingCommand->packet->flags |= MRTP_PACKET_FLAG_SENT;
+
+			mrtp_packet_destroy(outgoingCommand->packet);
+		}
+	}
+
+	mrtp_free(outgoingCommand);
+
+	if (mrtp_list_empty(&peer->sentReliableCommands))
+		return commandNumber;
+
+	//设置发送队列的下次包的超时时间
+	outgoingCommand = (MRtpOutgoingCommand *)mrtp_list_front(&peer->sentReliableCommands);
+	peer->nextTimeout = outgoingCommand->sentTime + outgoingCommand->roundTripTimeout;
+
+	//返回相应的command number
+	return commandNumber;
 }
 
 //处理确认请求
@@ -892,7 +1047,7 @@ static int mrtp_protocol_handle_verify_connect(MRtpHost * host, MRtpEvent * even
 	}
 
 	// connect command的sequence number一定是1，所以这里删除sequence number为1的command
-	mrtp_protocol_remove_sent_reliable_command(peer, 1, 0xFF);
+	mrtp_protocol_remove_sent_reliable_command(peer, 1);
 
 	peer->outgoingPeerID = MRTP_NET_TO_HOST_16(command->verifyConnect.outgoingPeerID);
 	peer->incomingSessionID = command->verifyConnect.incomingSessionID;
@@ -925,93 +1080,6 @@ static int mrtp_protocol_handle_verify_connect(MRtpHost * host, MRtpEvent * even
 
 	mrtp_protocol_notify_connect(host, peer, event);
 	return 0;
-}
-
-//从sentReliableCommands队列中确认之前发送的command
-static MRtpProtocolCommand mrtp_protocol_remove_sent_reliable_command(MRtpPeer * peer,
-	mrtp_uint16 reliableSequenceNumber) {
-
-	MRtpOutgoingCommand * outgoingCommand = NULL;
-	MRtpListIterator currentCommand;
-	MRtpProtocolCommand commandNumber;
-	int wasSent = 1;
-
-	for (currentCommand = mrtp_list_begin(&peer->sentReliableCommands);
-		currentCommand != mrtp_list_end(&peer->sentReliableCommands);
-		currentCommand = mrtp_list_next(currentCommand))
-	{
-		outgoingCommand = (MRtpOutgoingCommand *)currentCommand;
-		if (outgoingCommand->sequenceNumber == reliableSequenceNumber)
-			break;
-	}
-
-	//如果sentReliableCommands中没有找到响应的command，
-	//则在outgoingReliableCommands中继续检索（可能已经被判定为超时准备重新发送了）
-	if (currentCommand == mrtp_list_end(&peer->sentReliableCommands)) {
-
-		for (currentCommand = mrtp_list_begin(&peer->outgoingReliableCommands);
-			currentCommand != mrtp_list_end(&peer->outgoingReliableCommands);
-			currentCommand = mrtp_list_next(currentCommand))
-		{
-			outgoingCommand = (MRtpOutgoingCommand *)currentCommand;
-
-			if (outgoingCommand->sendAttempts < 1) return MRTP_PROTOCOL_COMMAND_NONE;
-
-			if (outgoingCommand->sequenceNumber == reliableSequenceNumber)
-				break;
-		}
-
-		if (currentCommand == mrtp_list_end(&peer->outgoingReliableCommands))
-			return MRTP_PROTOCOL_COMMAND_NONE;
-
-		wasSent = 0;
-	}
-
-	if (outgoingCommand == NULL)
-		return MRTP_PROTOCOL_COMMAND_NONE;
-
-	mrtp_uint8 channelID = channelIDs[outgoingCommand->command.header.command& MRTP_PROTOCOL_COMMAND_MASK];
-
-	if (channelID < peer->channelCount) {
-
-		MRtpChannel * channel = &peer->channels[channelID];
-		mrtp_uint16 reliableWindow = reliableSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
-		//将其占用的相应的窗口移除
-		if (channel->commandWindows[reliableWindow] > 0) {
-			--channel->commandWindows[reliableWindow];
-			if (!channel->commandWindows[reliableWindow])
-				channel->usedReliableWindows &= ~(1 << reliableWindow);
-		}
-	}
-
-	commandNumber = (MRtpProtocolCommand)(outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK);
-
-	//从相应的队列中移除这个command
-	mrtp_list_remove(&outgoingCommand->outgoingCommandList);
-
-	if (outgoingCommand->packet != NULL) {
-		if (wasSent)
-			peer->reliableDataInTransit -= outgoingCommand->fragmentLength;
-		--outgoingCommand->packet->referenceCount;
-
-		if (outgoingCommand->packet->referenceCount == 0) {
-			outgoingCommand->packet->flags |= MRTP_PACKET_FLAG_SENT;
-
-			mrtp_packet_destroy(outgoingCommand->packet);
-		}
-	}
-
-	mrtp_free(outgoingCommand);
-
-	if (mrtp_list_empty(&peer->sentReliableCommands))
-		return commandNumber;
-
-	//设置发送队列的下次包的超时时间
-	outgoingCommand = (MRtpOutgoingCommand *)mrtp_list_front(&peer->sentReliableCommands);
-	peer->nextTimeout = outgoingCommand->sentTime + outgoingCommand->roundTripTimeout;
-
-	//返回相应的command number
-	return commandNumber;
 }
 
 static int mrtp_protocol_handle_disconnect(MRtpHost * host, MRtpPeer * peer, const MRtpProtocol * command) {
@@ -1432,6 +1500,11 @@ static int mrtp_protocol_receive_incoming_commands(MRtpHost * host, MRtpEvent * 
 		if (receivedLength == 0)
 			return 0;
 
+#ifdef SENDANDRECEIVE
+		printf("receive %d\n", receivedLength);
+#endif // SENDANDRECEIVE
+
+
 		host->receivedData = host->packetData[0];
 		host->receivedDataLength = receivedLength;
 
@@ -1542,7 +1615,7 @@ int mrtp_host_service(MRtpHost * host, MRtpEvent * event, mrtp_uint32 timeout) {
 
 		//如果遇到event，则返回
 		//将与host相连的peer中的所有outgoingcommand发送出去
-		switch (mrtp_protocol_send_reliable_outgoing_commands(host, event, 1)) {
+		switch (mrtp_protocol_send_outgoing_commands(host, event, 1)) {
 		case 1:
 			return 1;
 		case -1:
@@ -1551,14 +1624,14 @@ int mrtp_host_service(MRtpHost * host, MRtpEvent * event, mrtp_uint32 timeout) {
 			break;
 		}
 
-		switch (mrtp_protocol_send_redundancy_outgoing_commands(host, event, 1)) {
-		case 1:
-			return 1;
-		case -1:
-			return -1;
-		default:
-			break;
-		}
+		//switch (mrtp_protocol_send_redundancy_outgoing_commands(host, event, 1)) {
+		//case 1:
+		//	return 1;
+		//case -1:
+		//	return -1;
+		//default:
+		//	break;
+		//}
 
 		//接收command
 		switch (mrtp_protocol_receive_incoming_commands(host, event)) {
@@ -1570,7 +1643,7 @@ int mrtp_host_service(MRtpHost * host, MRtpEvent * event, mrtp_uint32 timeout) {
 			break;
 		}
 		//刚才接收command后将需要发送的ack发送出去
-		switch (mrtp_protocol_send_reliable_outgoing_commands(host, event, 1)) {
+		switch (mrtp_protocol_send_outgoing_commands(host, event, 1)) {
 		case 1:
 			return 1;
 		case -1:
@@ -1614,6 +1687,6 @@ int mrtp_host_service(MRtpHost * host, MRtpEvent * event, mrtp_uint32 timeout) {
 void mrtp_host_flush(MRtpHost * host) {
 	host->serviceTime = mrtp_time_get();
 
-	mrtp_protocol_send_reliable_outgoing_commands(host, NULL, 0);
-	mrtp_protocol_send_redundancy_outgoing_commands(host, NULL, 0);
+	mrtp_protocol_send_outgoing_commands(host, NULL, 0);
+	//mrtp_protocol_send_redundancy_outgoing_commands(host, NULL, 0);
 }
