@@ -42,7 +42,7 @@ int main(int argc, char ** argv) {
 	MRtpEvent event;
 	/* Wait up to 1000 milliseconds for an event. */
 	while (true) {
-		while (mrtp_host_service(server, &event, 30) >= 1) {
+		while (mrtp_host_service(server, &event, 0) >= 1) {
 			switch (event.type) {
 			case MRTP_EVENT_TYPE_CONNECT:
 				printf("A new client connected from %x:%u.\n",
@@ -64,6 +64,7 @@ int main(int argc, char ** argv) {
 				break;
 			}
 		}
+		Sleep(30);
 	}
 	
 

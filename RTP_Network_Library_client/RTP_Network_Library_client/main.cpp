@@ -56,7 +56,7 @@ int main(int argc, char ** argv) {
 	int packetNum = 0;
 	/* Wait up to 5 seconds for the connection attempt to succeed. */
 	while (true) {
-		while (mrtp_host_service(client, &event, 30) >= 1) {
+		while (mrtp_host_service(client, &event, 0) >= 1) {
 			switch (event.type) {
 			case MRTP_EVENT_TYPE_CONNECT:
 				printf("connect to server %x:%u.\n", event.peer->address.host, event.peer->address.port);
@@ -64,23 +64,25 @@ int main(int argc, char ** argv) {
 				break;
 			case MRTP_EVENT_TYPE_DISCONNECT:
 				printf("Disconnection succeeded.\n");
-				disconnected = true;
 				break;
 			}
 		}
 		if (disconnected)
 			break;
-		if (!disconnected && (peer->outgoingReliableSequenceNumber > 10 ||
-			peer->channels[MRTP_PROTOCOL_RELIABLE_CHANNEL_NUM].outgoingSequenceNumber > 10) ||
-			(peer->channels[MRTP_PROTOCOL_REDUNDANCY_NOACK_CHANNEL_NUM].outgoingSequenceNumber > 100)) {
+		if (/*!disconnected && (peer->outgoingReliableSequenceNumber > 10 ||
+			peer->channels[MRTP_PROTOCOL_RELIABLE_CHANNEL_NUM].outgoingSequenceNumber > 10) ||*/
+			(peer->channels[MRTP_PROTOCOL_REDUNDANCY_NOACK_CHANNEL_NUM].outgoingSequenceNumber > 4096)) {
 			mrtp_peer_disconnect(peer, 0);
+			disconnected = true;
 		}
 		if (!disconnected) {
 			std::string packet_str = "packct" + std::to_string(packetNum) + " at peer" + std::to_string(peer->outgoingPeerID);
+			packet_str += std::string(500, 'a');
 			MRtpPacket * packet = mrtp_packet_create(packet_str.c_str(), packet_str.size() + 1, MRTP_PACKET_FLAG_REDUNDANCY_NO_ACK);
 			mrtp_peer_send(peer, packet);
 			packetNum++;
 		}
+		Sleep(30);
 	}
 	
 	atexit(mrtp_deinitialize);

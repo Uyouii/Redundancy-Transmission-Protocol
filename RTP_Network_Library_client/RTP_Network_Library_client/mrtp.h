@@ -302,6 +302,7 @@ extern "C"
 		MRtpPacket *         packet;    /**< packet associated with the event, if appropriate */
 	} MRtpEvent;
 
+	extern mrtp_uint8 channelIDs[];
 
 	MRTP_API int mrtp_initialize(void);
 	MRTP_API int mrtp_initialize_with_callbacks(const MRtpCallbacks * inits);
@@ -365,6 +366,7 @@ extern "C"
 	extern MRtpIncomingCommand * mrtp_peer_queue_incoming_command(MRtpPeer *, const MRtpProtocol *, const void *, size_t, mrtp_uint32, mrtp_uint32);
 	extern MRtpAcknowledgement * mrtp_peer_queue_acknowledgement(MRtpPeer *, const MRtpProtocol *, mrtp_uint16);
 	extern void mrtp_peer_dispatch_incoming_reliable_commands(MRtpPeer *, MRtpChannel *);
+	extern void mrtp_peer_dispatch_incoming_redundancy_noack_commands(MRtpPeer*, MRtpChannel *);
 	extern void mrtp_peer_on_connect(MRtpPeer *);
 	extern void mrtp_peer_on_disconnect(MRtpPeer *);
 	extern void mrtp_peer_reset_redundancy_noack_buffer(MRtpPeer* peer, size_t redundancyNum);
