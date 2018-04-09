@@ -242,6 +242,8 @@ extern "C"
 		MRtpRedundancyBuffer* redundancyNoAckBuffers;
 		size_t currentRedundancyBufferNum;
 		MRtpRedundancyBuffer* redundancyBuffers;
+		mrtp_uint32 lastReceiveRedundancyNumber;
+		mrtp_uint16 quickRetransmitNum;
 	} MRtpPeer;
 
 
@@ -346,7 +348,7 @@ extern "C"
 	MRTP_API void mrtp_host_bandwidth_limit(MRtpHost *, mrtp_uint32, mrtp_uint32);
 	extern void mrtp_host_bandwidth_throttle(MRtpHost *);
 	extern mrtp_uint32 mrtp_host_random_seed(void);
-	extern void mrtp_host_set_redundancy_num(MRtpHost *host, mrtp_uint32 redundancy_num);
+	MRTP_API void mrtp_host_set_redundancy_num(MRtpHost *host, mrtp_uint32 redundancy_num);
 
 	MRTP_API int mrtp_peer_send_reliable(MRtpPeer * peer, MRtpPacket * packet);
 	MRTP_API int mrtp_peer_send(MRtpPeer *peer, MRtpPacket *packet);
@@ -359,6 +361,7 @@ extern "C"
 	MRTP_API void mrtp_peer_disconnect_now(MRtpPeer *, mrtp_uint32);
 	MRTP_API void  mrtp_peer_disconnect_later(MRtpPeer *, mrtp_uint32);
 	MRTP_API void mrtp_peer_throttle_configure(MRtpPeer *, mrtp_uint32, mrtp_uint32, mrtp_uint32);
+	MRTP_API void mrtp_peer_quick_restransmit_configure(MRtpPeer * peer, mrtp_uint16 quickRetransmit);
 	extern int mrtp_peer_throttle(MRtpPeer *, mrtp_uint32);
 	extern void mrtp_peer_reset_queues(MRtpPeer *);
 	extern void mrtp_peer_setup_outgoing_command(MRtpPeer *, MRtpOutgoingCommand *);
@@ -371,6 +374,7 @@ extern "C"
 	extern void mrtp_peer_on_disconnect(MRtpPeer *);
 	extern void mrtp_peer_reset_redundancy_noack_buffer(MRtpPeer* peer, size_t redundancyNum);
 	extern void mrtp_peer_reset_reduandancy_buffer(MRtpPeer* peer, size_t redundancyNum);
+
 
 	extern size_t mrtp_protocol_command_size(mrtp_uint8);
 	extern void mrtp_protocol_remove_redundancy_buffer_commands(MRtpRedundancyBuffer* mrtpRedundancyBuffer);

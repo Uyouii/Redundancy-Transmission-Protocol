@@ -17,7 +17,10 @@ static size_t commandSizes[MRTP_PROTOCOL_COMMAND_COUNT] = {
 	sizeof(MRtpProtocolBandwidthLimit),
 	sizeof(MRtpProtocolThrottleConfigure),
 	sizeof(MRtpProtocolSendRedundancyNoAck),
-	sizeof(MRtpProtocolSendRedundancyFragementNoAck)
+	sizeof(MRtpProtocolSendRedundancyFragementNoAck),
+	sizeof(MRtpProtocolSendRedundancy),
+	sizeof(MRtpProtocolSendRedundancyFragment),
+	sizeof(MRtpProtocolSetQuickRetransmit),
 };
 
 mrtp_uint8 channelIDs[] = {
@@ -33,6 +36,9 @@ mrtp_uint8 channelIDs[] = {
 	0xFF,										//throttleconfigure
 	MRTP_PROTOCOL_REDUNDANCY_NOACK_CHANNEL_NUM,	//send redundancy no ack
 	MRTP_PROTOCOL_REDUNDANCY_NOACK_CHANNEL_NUM, //send redundancy fragement no ack
+	MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM,		//send reliable redundancy
+	MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM,		//send reliable redundancy
+	0xFF,
 };
 
 char* commandName[] = {
@@ -47,7 +53,10 @@ char* commandName[] = {
 	"BandwidthLimit",
 	"ThrottleConfigure",
 	"SendRedundancyNoAck",
-	"SendRedundancyFragementNoAck"
+	"SendRedundancyFragementNoAck",
+	"SendRedundancy",
+	"SendRedundancyFragment",
+	"RetransmitConfigure",
 };
 
 size_t mrtp_protocol_command_size(mrtp_uint8 commandNumber) {
@@ -166,8 +175,6 @@ static void mrtp_protocol_notify_connect(MRtpHost * host, MRtpPeer * peer, MRtpE
 		mrtp_protocol_dispatch_state(host, peer, peer->state == MRTP_PEER_STATE_CONNECTING ? MRTP_PEER_STATE_CONNECTION_SUCCEEDED : MRTP_PEER_STATE_CONNECTION_PENDING);
 }
 
-// 检测peer->sentReliable队列中的所有command是否超时
-// 如果超时则判断是否断开连接或者重发该包
 static int mrtp_protocol_check_timeouts(MRtpHost * host, MRtpPeer * peer, MRtpEvent * event) {
 
 	MRtpOutgoingCommand * outgoingCommand;
@@ -552,7 +559,6 @@ static int mrtp_protocol_send_redundancy_noack_commands(MRtpHost * host, MRtpPee
 	return 0;
 }
 
-
 static int mrtp_protocol_send_outgoing_commands(MRtpHost * host, MRtpEvent * event, int checkForTimeouts) {
 
 	mrtp_uint8 headerData[sizeof(MRtpProtocolHeader) + sizeof(mrtp_uint32)];
@@ -615,8 +621,8 @@ static int mrtp_protocol_send_outgoing_commands(MRtpHost * host, MRtpEvent * eve
 				if (currentPeer->packetLossEpoch == 0)
 					currentPeer->packetLossEpoch = host->serviceTime;
 				else if (MRTP_TIME_DIFFERENCE(host->serviceTime, currentPeer->packetLossEpoch) >= MRTP_PEER_PACKET_LOSS_INTERVAL &&
-					currentPeer->packetsSent > 0) 
-				{
+					currentPeer->packetsSent > 0) {
+
 					mrtp_uint32 packetLoss = currentPeer->packetsLost * MRTP_PEER_PACKET_LOSS_SCALE / currentPeer->packetsSent;
 
 					currentPeer->packetLossVariance -= currentPeer->packetLossVariance / 4;
@@ -1133,19 +1139,17 @@ static int mrtp_protocol_handle_bandwidth_limit(MRtpHost * host, MRtpPeer * peer
 
 	if (peer->incomingBandwidth == 0 && host->outgoingBandwidth == 0)
 		peer->windowSize = MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE;
+	else if (peer->incomingBandwidth == 0 || host->outgoingBandwidth == 0)
+		peer->windowSize = (MRTP_MAX(peer->incomingBandwidth, host->outgoingBandwidth) /
+			MRTP_PEER_WINDOW_SIZE_SCALE) * MRTP_PROTOCOL_MINIMUM_WINDOW_SIZE;
 	else
-		if (peer->incomingBandwidth == 0 || host->outgoingBandwidth == 0)
-			peer->windowSize = (MRTP_MAX(peer->incomingBandwidth, host->outgoingBandwidth) /
-				MRTP_PEER_WINDOW_SIZE_SCALE) * MRTP_PROTOCOL_MINIMUM_WINDOW_SIZE;
-		else
-			peer->windowSize = (MRTP_MIN(peer->incomingBandwidth, host->outgoingBandwidth) /
-				MRTP_PEER_WINDOW_SIZE_SCALE) * MRTP_PROTOCOL_MINIMUM_WINDOW_SIZE;
+		peer->windowSize = (MRTP_MIN(peer->incomingBandwidth, host->outgoingBandwidth) /
+			MRTP_PEER_WINDOW_SIZE_SCALE) * MRTP_PROTOCOL_MINIMUM_WINDOW_SIZE;
 
 	if (peer->windowSize < MRTP_PROTOCOL_MINIMUM_WINDOW_SIZE)
 		peer->windowSize = MRTP_PROTOCOL_MINIMUM_WINDOW_SIZE;
-	else
-		if (peer->windowSize > MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE)
-			peer->windowSize = MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE;
+	else if (peer->windowSize > MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE)
+		peer->windowSize = MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE;
 
 	return 0;
 }
@@ -1314,6 +1318,7 @@ static int mrtp_protocol_handle_send_redundancy_fragment_noack(MRtpHost* host, M
 	MRtpIncomingCommand * startCommand = NULL;
 
 	fragmentLength = MRTP_NET_TO_HOST_16(command->sendRedundancyFragementNoAck.dataLength);
+
 	*currentData += fragmentLength;
 	if (fragmentLength > host->maximumPacketSize || *currentData < host->receivedData ||
 		*currentData > & host->receivedData[host->receivedDataLength])
@@ -1401,6 +1406,26 @@ static int mrtp_protocol_handle_send_redundancy_fragment_noack(MRtpHost* host, M
 
 	return 0;
 
+}
+
+static int mrtp_protocol_handle_set_quick_retransmit(MRtpHost * host, MRtpPeer * peer, const MRtpProtocol * command) {
+
+	if (peer->state != MRTP_PEER_STATE_CONNECTED && peer->state != MRTP_PEER_STATE_DISCONNECT_LATER)
+		return -1;
+
+	peer->quickRetransmitNum = MRTP_NET_TO_HOST_16(command->setQuickRestrnsmit.quickRetransmit);
+
+	if (peer->quickRetransmitNum > MRTP_PROTOCOL_MAXIMUM_QUICK_RETRANSMIT)
+		peer->quickRetransmitNum = MRTP_PROTOCOL_MAXIMUM_QUICK_RETRANSMIT;
+	else if (peer->quickRetransmitNum < MRTP_PROTOCOL_MINIMUM_QUICK_RETRANSMIT)
+		peer->quickRetransmitNum = MRTP_PROTOCOL_MINIMUM_QUICK_RETRANSMIT;
+
+#ifdef SENDANDRECEIVE
+	printf("set quickRetrainsmitNum: %d successfully.\n", peer->quickRetransmitNum);
+#endif
+
+
+	return 0;
 }
 
 static int mrtp_protocol_handle_incoming_commands(MRtpHost * host, MRtpEvent * event) {
@@ -1533,6 +1558,11 @@ static int mrtp_protocol_handle_incoming_commands(MRtpHost * host, MRtpEvent * e
 
 		case MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_FRAGEMENT_NO_ACK:
 			if (mrtp_protocol_handle_send_redundancy_fragment_noack(host, peer, command, &currentData))
+				goto commandError;
+			break;
+
+		case MRTP_PROTOCOL_COMMAND_SET_QUICK_RETRANSMIT:
+			if (mrtp_protocol_handle_set_quick_retransmit(host, peer, command))
 				goto commandError;
 			break;
 			/*
@@ -1778,6 +1808,7 @@ int mrtp_host_service(MRtpHost * host, MRtpEvent * event, mrtp_uint32 timeout) {
 
 			if (mrtp_socket_wait(host->socket, &waitCondition, MRTP_TIME_DIFFERENCE(timeout, host->serviceTime)) != 0)
 				return -1;
+
 		} while (waitCondition & MRTP_SOCKET_WAIT_INTERRUPT);
 
 		host->serviceTime = mrtp_time_get();

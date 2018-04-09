@@ -106,11 +106,6 @@ void mrtp_peer_reset_queues(MRtpPeer * peer) {
 	peer->channelCount = 0;
 }
 
-/** Forcefully disconnects a peer.
-@param peer peer to forcefully disconnect
-@remarks The foreign host represented by the peer is not notified of the disconnection and will timeout
-on its connection to the local host.
-*/
 void mrtp_peer_reset(MRtpPeer * peer) {
 
 	mrtp_peer_on_disconnect(peer);
@@ -158,6 +153,7 @@ void mrtp_peer_reset(MRtpPeer * peer) {
 	peer->windowSize = MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE;
 	peer->eventData = 0;
 	peer->totalWaitingData = 0;
+	peer->quickRetransmitNum = MRTP_PROTOCOL_DEFAULT_QUICK_RETRANSMIT;
 
 	mrtp_peer_reset_queues(peer);
 }
@@ -392,7 +388,7 @@ int mrtp_peer_send(MRtpPeer *peer, MRtpPacket *packet) {
 int mrtp_peer_send_redundancy_noack(MRtpPeer* peer, MRtpPacket* packet) {
 
 	// 如果之前peer的redundancybuffer没有初始化过，则进行初始化
-	if (peer->redundancyNum == 0)
+	if (peer->redundancyNum == 0 || peer->redundancyNum != peer->host->redundancyNum)
 		mrtp_peer_reset_redundancy_noack_buffer(peer, MRTP_PROTOCOL_DEFAULT_REDUNDANCY_NUM);
 
 	MRtpChannel* channel = &peer->channels[MRTP_PROTOCOL_REDUNDANCY_NOACK_CHANNEL_NUM];
@@ -471,12 +467,8 @@ int mrtp_peer_send_redundancy_noack(MRtpPeer* peer, MRtpPacket* packet) {
 
 int mrtp_peer_send_redundancy(MRtpPeer* peer, MRtpPacket* packet) {
 
-	MRtpChannel *channel = &peer->channels[MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM];
-	MRtpProtocol command;
-	size_t fragementLength;
-
-	fragementLength = peer->mtu - sizeof(MRtpProtocolHeader);
 	return 0;
+	
 }
 
 int mrtp_peer_send_reliable(MRtpPeer * peer, MRtpPacket * packet) {
@@ -839,4 +831,40 @@ void mrtp_peer_reset_reduandancy_buffer(MRtpPeer* peer, size_t redundancyNum) {
 		peer->currentRedundancyBufferNum = 0;
 	}
 
+}
+
+void mrtp_peer_quick_restransmit_configure(MRtpPeer * peer, mrtp_uint16 quickRetransmit) {
+
+	if (quickRetransmit > MRTP_PROTOCOL_MAXIMUM_QUICK_RETRANSMIT)
+		quickRetransmit = MRTP_PROTOCOL_MAXIMUM_QUICK_RETRANSMIT;
+	else if (quickRetransmit < MRTP_PROTOCOL_MINIMUM_QUICK_RETRANSMIT)
+		quickRetransmit = MRTP_PROTOCOL_MINIMUM_QUICK_RETRANSMIT;
+	
+	MRtpProtocol command;
+
+	peer->quickRetransmitNum = quickRetransmit;
+
+	command.header.command = MRTP_PROTOCOL_COMMAND_SET_QUICK_RETRANSMIT | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
+
+	command.setQuickRestrnsmit.quickRetransmit = MRTP_HOST_TO_NET_16(quickRetransmit);
+
+	mrtp_peer_queue_outgoing_command(peer, &command, NULL, 0, 0);
+}
+
+void mrtp_peer_throttle_configure(MRtpPeer * peer, mrtp_uint32 interval, mrtp_uint32 acceleration, 
+	mrtp_uint32 deceleration)
+{
+	MRtpProtocol command;
+
+	peer->packetThrottleInterval = interval;
+	peer->packetThrottleAcceleration = acceleration;
+	peer->packetThrottleDeceleration = deceleration;
+
+	command.header.command = MRTP_PROTOCOL_COMMAND_THROTTLE_CONFIGURE | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
+
+	command.throttleConfigure.packetThrottleInterval = MRTP_HOST_TO_NET_32(interval);
+	command.throttleConfigure.packetThrottleAcceleration = MRTP_HOST_TO_NET_32(acceleration);
+	command.throttleConfigure.packetThrottleDeceleration = MRTP_HOST_TO_NET_32(deceleration);
+
+	mrtp_peer_queue_outgoing_command(peer, &command, NULL, 0, 0);
 }

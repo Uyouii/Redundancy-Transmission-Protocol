@@ -21,6 +21,10 @@ enum {
 	MRTP_PROTOCOL_MINIMUM_REDUNDANCY_NUM = 2,
 
 	MRTP_PROTOCOL_MAXIMUM_REDUNDNACY_BUFFER_SIZE = 600,
+
+	MRTP_PROTOCOL_DEFAULT_QUICK_RETRANSMIT = 5,
+	MRTP_PROTOCOL_MAXIMUM_QUICK_RETRANSMIT = 30,
+	MRTP_PROTOCOL_MINIMUM_QUICK_RETRANSMIT = 3,
 };
 
 typedef enum _MRtpProtocolCommand {
@@ -36,7 +40,10 @@ typedef enum _MRtpProtocolCommand {
 	MRTP_PROTOCOL_COMMAND_THROTTLE_CONFIGURE = 9,
 	MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_NO_ACK = 10,
 	MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_FRAGEMENT_NO_ACK = 11,
-	MRTP_PROTOCOL_COMMAND_COUNT = 12,
+	MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY = 12,
+	MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_FRAGMENT = 13,
+	MRTP_PROTOCOL_COMMAND_SET_QUICK_RETRANSMIT = 14,
+	MRTP_PROTOCOL_COMMAND_COUNT = 15,
 
 	MRTP_PROTOCOL_COMMAND_MASK = 0x0F
 } MRtpProtocolCommand;
@@ -66,7 +73,7 @@ typedef enum _MRtpProtocolFlag {
 
 typedef struct _MRtpProtocolHeader {
 	mrtp_uint16 peerID;
-	mrtp_uint16 sentTime; 
+	mrtp_uint16 sentTime;
 } MRTP_PACKED MRtpProtocolHeader;
 
 typedef struct _MRtpProtocolCommandHeader {
@@ -149,6 +156,21 @@ typedef struct _MRtpProtocolSendFragment {
 	mrtp_uint32 fragmentOffset;
 } MRTP_PACKED MRtpProtocolSendFragment;
 
+typedef struct _MRtpProtocolSendRedundancy {
+	MRtpProtocolCommandHeader header;
+	mrtp_uint16 dataLength;
+} MRTP_PACKED MRtpProtocolSendRedundancy;
+
+typedef struct _MRtpProtocolSendRedundancyFragment {
+	MRtpProtocolCommandHeader header;
+	mrtp_uint16 startSequenceNumber;
+	mrtp_uint16 dataLength;
+	mrtp_uint32 fragmentCount;
+	mrtp_uint32 fragmentNumber;
+	mrtp_uint32 totalLength;
+	mrtp_uint32 fragmentOffset;
+} MRTP_PACKED MRtpProtocolSendRedundancyFragment;
+
 typedef struct _MRtpProtocolSendRedundancyNoAck {
 	MRtpProtocolCommandHeader header;
 	mrtp_uint16 datalength;
@@ -164,6 +186,11 @@ typedef struct _MRtpProtocolSendRedundancyFragementNoAck {
 	mrtp_uint32 fragmentOffset;
 } MRTP_PACKED MRtpProtocolSendRedundancyFragementNoAck;
 
+typedef struct _MRtpProtocolSetQuickRetransmit {
+	MRtpProtocolCommandHeader header;
+	mrtp_uint16 quickRetransmit;
+} MRTP_PACKED MRtpProtocolSetQuickRetransmit;
+
 typedef union _MRtpProtocol {
 	MRtpProtocolCommandHeader header;
 	MRtpProtocolAcknowledge acknowledge;
@@ -177,6 +204,9 @@ typedef union _MRtpProtocol {
 	MRtpProtocolThrottleConfigure throttleConfigure;
 	MRtpProtocolSendRedundancyNoAck sendRedundancyNoAck;
 	MRtpProtocolSendRedundancyFragementNoAck sendRedundancyFragementNoAck;
+	MRtpProtocolSendRedundancy sendRedundancy;
+	MRtpProtocolSendRedundancyFragment sendRedundancyFragment;
+	MRtpProtocolSetQuickRetransmit setQuickRestrnsmit;
 } MRTP_PACKED MRtpProtocol;
 
 #ifdef _MSC_VER
