@@ -102,6 +102,7 @@ extern "C"
 		mrtp_uint32  fragmentOffset;
 		mrtp_uint16  fragmentLength;
 		mrtp_uint16  sendAttempts;
+		size_t redundancyBufferNum;
 		MRtpProtocol command;
 		MRtpPacket * packet;
 	} MRtpOutgoingCommand;
@@ -171,8 +172,14 @@ extern "C"
 	} MRtpChannel;
 
 
+	typedef struct _MRtpRedundancyNoAckBuffer {
+		MRtpList sentCommands;	//for noack redundancy command to store the command
+		size_t buffercount;
+		size_t packetSize;
+		MRtpBuffer buffers[MRTP_BUFFER_MAXIMUM / 2];
+	} MRtpRedundancyNoAckBuffer;
+
 	typedef struct _MRtpRedundancyBuffer {
-		MRtpList sentCommands;
 		size_t buffercount;
 		size_t packetSize;
 		MRtpBuffer buffers[MRTP_BUFFER_MAXIMUM / 2];
@@ -200,6 +207,7 @@ extern "C"
 		mrtp_uint32 lastSendTime;
 		mrtp_uint32 lastReceiveTime;
 		mrtp_uint32 nextTimeout;
+		mrtp_uint32 nextRedundancyTimeout;
 		mrtp_uint32 earliestTimeout;
 		mrtp_uint32 packetLossEpoch;
 		mrtp_uint32 packetsSent;
@@ -230,6 +238,8 @@ extern "C"
 		MRtpList acknowledgements;
 		MRtpList sentReliableCommands;
 		MRtpList sentRedundancyNoAckCommands;
+		MRtpList sentRedundancyCommands;			// already sent
+		MRtpList alreadyReceivedRedundancyCommands;	// peer already receive and ready to delete
 		MRtpList outgoingReliableCommands;
 		MRtpList outgoingRedundancyCommands;
 		MRtpList outgoingRedundancyNoAckCommands;
@@ -239,7 +249,7 @@ extern "C"
 		size_t totalWaitingData;
 		size_t redundancyNum;
 		size_t currentRedundancyNoAckBufferNum;
-		MRtpRedundancyBuffer* redundancyNoAckBuffers;
+		MRtpRedundancyNoAckBuffer* redundancyNoAckBuffers;
 		size_t currentRedundancyBufferNum;
 		MRtpRedundancyBuffer* redundancyBuffers;
 		mrtp_uint32 lastReceiveRedundancyNumber;
@@ -377,7 +387,7 @@ extern "C"
 
 
 	extern size_t mrtp_protocol_command_size(mrtp_uint8);
-	extern void mrtp_protocol_remove_redundancy_buffer_commands(MRtpRedundancyBuffer* mrtpRedundancyBuffer);
+	extern void mrtp_protocol_remove_redundancy_buffer_commands(MRtpRedundancyNoAckBuffer* mrtpRedundancyBuffer);
 
 
 #ifdef __cplusplus

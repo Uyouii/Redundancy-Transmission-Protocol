@@ -1,8 +1,4 @@
-﻿/**
-@file  win32.c
-@brief mrtp Win32 system specific functions
-*/
-#ifdef _WIN32
+﻿#ifdef _WIN32
 
 #define MRTP_BUILDING_LIB 1
 #include "mrtp.h"

@@ -71,6 +71,9 @@ int main(int argc, char ** argv) {
 	mrtp_host_destroy(server);
 
 	atexit(mrtp_deinitialize);
+
+#ifdef _MSC_VER
 	system("pause");
+#endif // _MSC_VER
 
 }

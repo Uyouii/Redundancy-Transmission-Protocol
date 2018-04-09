@@ -89,6 +89,8 @@ MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount,
 		mrtp_list_clear(&currentPeer->dispatchedCommands);
 		mrtp_list_clear(&currentPeer->outgoingRedundancyCommands);
 		mrtp_list_clear(&currentPeer->outgoingRedundancyNoAckCommands);
+		mrtp_list_clear(&currentPeer->sentRedundancyCommands);
+		mrtp_list_clear(&currentPeer->alreadyReceivedRedundancyCommands);
 
 		mrtp_peer_reset(currentPeer);
 	}
