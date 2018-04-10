@@ -67,7 +67,6 @@ int main(int argc, char ** argv) {
 		Sleep(30);
 	}
 	
-
 	mrtp_host_destroy(server);
 
 	atexit(mrtp_deinitialize);

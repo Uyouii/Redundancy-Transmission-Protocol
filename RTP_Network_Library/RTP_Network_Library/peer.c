@@ -85,6 +85,9 @@ void mrtp_peer_reset_queues(MRtpPeer * peer) {
 	while (!mrtp_list_empty(&peer->acknowledgements))
 		mrtp_free(mrtp_list_remove(mrtp_list_begin(&peer->acknowledgements)));
 
+	while (!mrtp_list_empty(&peer->redundancyAcknowledgemets))
+		mrtp_free(mrtp_list_remove(mrtp_list_begin(&peer->redundancyAcknowledgemets)));
+
 	mrtp_peer_reset_outgoing_commands(&peer->sentReliableCommands);
 	mrtp_peer_reset_outgoing_commands(&peer->sentRedundancyNoAckCommands);
 	mrtp_peer_reset_outgoing_commands(&peer->outgoingReliableCommands);
@@ -257,6 +260,27 @@ MRtpAcknowledgement * mrtp_peer_queue_acknowledgement(MRtpPeer * peer, const MRt
 
 	return acknowledgement;
 }
+
+MRtpAcknowledgement * mrtp_peer_queue_redundancy_acknowldegement(MRtpPeer* peer, const MRtpProtocol * command,
+	mrtp_uint16 sentTime)
+{
+	MRtpAcknowledgement * acknowledgement;
+	
+	acknowledgement = (MRtpAcknowledgement *)mrtp_malloc(sizeof(MRtpAcknowledgement));
+	if (acknowledgement == NULL)
+		return NULL;
+
+	peer->outgoingDataTotal += sizeof(MRtpProtocolRedundancyAcknowledge);
+
+	acknowledgement->sentTime = sentTime;
+	acknowledgement->command = *command;
+
+	mrtp_list_insert(mrtp_list_end(&peer->redundancyAcknowledgemets), acknowledgement);
+
+	return acknowledgement;
+}
+
+
 
 //调节peer->packetThrottle
 int mrtp_peer_throttle(MRtpPeer * peer, mrtp_uint32 rtt) {
@@ -484,7 +508,7 @@ int mrtp_peer_send_redundancy(MRtpPeer* peer, MRtpPacket* packet) {
 
 	}
 	else {
-		command.header.command = MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY;
+		command.header.command = MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY | MRTP_PROTOCOL_COMMAND_FLAG_REDUNDANCY_ACKNOWLEDGE;
 		command.sendRedundancy.dataLength = MRTP_HOST_TO_NET_16(packet->dataLength);
 		if (mrtp_peer_queue_outgoing_command(peer, &command, packet, 0, packet->dataLength) == NULL)
 			return -1;
@@ -655,8 +679,14 @@ void mrtp_peer_dispatch_incoming_redundancy_noack_commands(MRtpPeer * peer, MRtp
 
 }
 
+void mrtp_peer_dispatch_incoming_redundancy_commands(MRtpPeer * peer, MRtpChannel * channel) {
+
+}
+
+
+
 MRtpIncomingCommand *mrtp_peer_queue_incoming_command(MRtpPeer * peer, const MRtpProtocol * command,
-	const void * data, size_t dataLength, mrtp_uint32 flags, mrtp_uint32 fragmentCount)
+	const void * data, size_t dataLength, mrtp_uint32 flags, mrtp_uint32 fragmentCount, mrtp_uint16 sentTime)
 {
 	static MRtpIncomingCommand dummyCommand;
 	mrtp_uint8 channelID = channelIDs[command->header.command & MRTP_PROTOCOL_COMMAND_MASK];
@@ -686,6 +716,8 @@ MRtpIncomingCommand *mrtp_peer_queue_incoming_command(MRtpPeer * peer, const MRt
 	case MRTP_PROTOCOL_COMMAND_SEND_RELIABLE:
 	case MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_NO_ACK:
 	case MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_FRAGEMENT_NO_ACK:
+	case MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY:
+	case MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_FRAGMENT:
 
 		if (sequenceNumber == channel->incomingSequenceNumber)
 			goto discardCommand;
@@ -736,7 +768,7 @@ MRtpIncomingCommand *mrtp_peer_queue_incoming_command(MRtpPeer * peer, const MRt
 	incomingCommand->fragments = NULL;
 
 	if (fragmentCount > 0) {
-		//分配fragments用来记录已经到的fragment
+		//use fragments(byte map) to record the already received fragment
 		if (fragmentCount <= MRTP_PROTOCOL_MAXIMUM_FRAGMENT_COUNT)
 			incomingCommand->fragments = (mrtp_uint32 *)mrtp_malloc((fragmentCount + 31) / 32 * sizeof(mrtp_uint32));
 		if (incomingCommand->fragments == NULL) {
@@ -764,6 +796,13 @@ MRtpIncomingCommand *mrtp_peer_queue_incoming_command(MRtpPeer * peer, const MRt
 	case MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_NO_ACK:
 	case MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_FRAGEMENT_NO_ACK:
 		mrtp_peer_dispatch_incoming_redundancy_noack_commands(peer, channel);
+		break;
+
+	case MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY:
+	case MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_FRAGMENT:
+
+		mrtp_peer_queue_redundancy_acknowldegement(peer, command, sentTime);
+		mrtp_peer_dispatch_incoming_redundancy_commands(peer, channel);
 		break;
 
 	default:

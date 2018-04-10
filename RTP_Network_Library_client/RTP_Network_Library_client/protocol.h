@@ -23,7 +23,7 @@ enum {
 	MRTP_PROTOCOL_MAXIMUM_REDUNDNACY_BUFFER_SIZE = 600,
 
 	MRTP_PROTOCOL_DEFAULT_QUICK_RETRANSMIT = 5,
-	MRTP_PROTOCOL_MAXIMUM_QUICK_RETRANSMIT = 30,
+	MRTP_PROTOCOL_MAXIMUM_QUICK_RETRANSMIT = 10,
 	MRTP_PROTOCOL_MINIMUM_QUICK_RETRANSMIT = 3,
 };
 
@@ -43,13 +43,15 @@ typedef enum _MRtpProtocolCommand {
 	MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY = 12,
 	MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_FRAGMENT = 13,
 	MRTP_PROTOCOL_COMMAND_SET_QUICK_RETRANSMIT = 14,
-	MRTP_PROTOCOL_COMMAND_COUNT = 15,
+	MRTP_PROTOCOL_COMMAND_REDUNDANCY_ACKNOWLEDGE = 15,
+	MRTP_PROTOCOL_COMMAND_COUNT = 16,
 
-	MRTP_PROTOCOL_COMMAND_MASK = 0x0F
+	MRTP_PROTOCOL_COMMAND_MASK = 0x1F
 } MRtpProtocolCommand;
 
 typedef enum _MRtpProtocolFlag {
 	MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE = (1 << 7),
+	MRTP_PROTOCOL_COMMAND_FLAG_REDUNDANCY_ACKNOWLEDGE = (1 << 6),
 
 	MRTP_PROTOCOL_HEADER_SESSION_MASK = (3 << 12),
 	MRTP_PROTOCOL_HEADER_SESSION_SHIFT = 12,
@@ -191,6 +193,13 @@ typedef struct _MRtpProtocolSetQuickRetransmit {
 	mrtp_uint16 quickRetransmit;
 } MRTP_PACKED MRtpProtocolSetQuickRetransmit;
 
+typedef struct _MRtpProtocolRedundancyAcknowledge {
+	MRtpProtocolCommandHeader header;
+	mrtp_uint16 receivedSequenceNumber;
+	mrtp_uint16 receivedSentTime;
+	mrtp_uint16 nextUnackSequenceNumber;	//the packet before this seq number has already received
+} MRTP_PACKED MRtpProtocolRedundancyAcknowledge;
+
 typedef union _MRtpProtocol {
 	MRtpProtocolCommandHeader header;
 	MRtpProtocolAcknowledge acknowledge;
@@ -207,6 +216,7 @@ typedef union _MRtpProtocol {
 	MRtpProtocolSendRedundancy sendRedundancy;
 	MRtpProtocolSendRedundancyFragment sendRedundancyFragment;
 	MRtpProtocolSetQuickRetransmit setQuickRestrnsmit;
+	MRtpProtocolRedundancyAcknowledge redundancyAcknowledge;
 } MRTP_PACKED MRtpProtocol;
 
 #ifdef _MSC_VER

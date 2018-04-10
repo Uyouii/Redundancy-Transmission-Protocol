@@ -73,7 +73,7 @@ int main(int argc, char ** argv) {
 		if (!disconnected && (peer->outgoingReliableSequenceNumber > 10 ||
 			peer->channels[MRTP_PROTOCOL_RELIABLE_CHANNEL_NUM].outgoingSequenceNumber > 10) ||
 			(peer->channels[MRTP_PROTOCOL_REDUNDANCY_NOACK_CHANNEL_NUM].outgoingSequenceNumber > 10) ||
-			(peer->channels[MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM].outgoingSequenceNumber > 10)) {
+			(peer->channels[MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM].outgoingSequenceNumber > 100)) {
 			mrtp_peer_disconnect(peer, 0);
 			disconnected = true;
 		}
