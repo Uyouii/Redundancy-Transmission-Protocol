@@ -1,5 +1,4 @@
-﻿#define MRTP_BUILDING_LIB 1
-#include "list.h"
+﻿#include "list.h"
 
 /**
 @defgroup list MRtp linked list utility functions

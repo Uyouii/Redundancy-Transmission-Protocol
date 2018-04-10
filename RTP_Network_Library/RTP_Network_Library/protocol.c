@@ -1,6 +1,5 @@
 ﻿#include <stdio.h>
 #include <string.h>
-#define MRTP_BUILDING_LIB 1
 #include "utility.h"
 #include "time.h"
 #include "mrtp.h"
@@ -1015,7 +1014,7 @@ static int mrtp_protocol_handle_acknowledge(MRtpHost * host, MRtpEvent * event,
 	mrtp_uint32 roundTripTime, receivedSentTime, receivedReliableSequenceNumber;
 	MRtpProtocolCommand commandNumber;
 
-	//如果断开连接或者准备断开连接，则不处理
+	//if peer is already disconnected, then do nothing
 	if (peer->state == MRTP_PEER_STATE_DISCONNECTED || peer->state == MRTP_PEER_STATE_ZOMBIE)
 		return 0;
 

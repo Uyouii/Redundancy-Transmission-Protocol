@@ -1,8 +1,3 @@
-/**
-@file callbacks.c
-@brief MRtp callback functions
-*/
-#define MRTP_BUILDING_LIB 1
 #include "mrtp.h"
 
 static MRtpCallbacks callbacks = { malloc, free, abort };

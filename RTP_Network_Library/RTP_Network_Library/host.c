@@ -1,5 +1,4 @@
-﻿#define MRTP_BUILDING_LIB 1
-#include <string.h>
+﻿#include <string.h>
 #include "mrtp.h"
 
 MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount,

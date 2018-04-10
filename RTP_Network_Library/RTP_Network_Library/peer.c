@@ -1,5 +1,4 @@
 ﻿#include <string.h>
-#define MRTP_BUILDING_LIB 1
 #include "mrtp.h"
 
 extern mrtp_uint8 channelIDs[];
@@ -596,7 +595,7 @@ int mrtp_peer_send_reliable(MRtpPeer * peer, MRtpPacket * packet) {
 	return 0;
 }
 
-// 将已经收到的序号连续的command移动到dispatchCommand队列中
+// move the continual command to dispatchCommand queue
 void mrtp_peer_dispatch_incoming_reliable_commands(MRtpPeer * peer, MRtpChannel * channel) {
 
 	MRtpListIterator currentCommand;
@@ -607,13 +606,13 @@ void mrtp_peer_dispatch_incoming_reliable_commands(MRtpPeer * peer, MRtpChannel 
 	{
 		MRtpIncomingCommand * incomingCommand = (MRtpIncomingCommand *)currentCommand;
 
-		//如果fragement还有剩余或者序号不对就跳出
+		//if fragment hasn't been received entirly or the sequence number is not contunual
 		if (incomingCommand->fragmentsRemaining > 0 ||
 			incomingCommand->sequenceNumber != (mrtp_uint16)(channel->incomingSequenceNumber + 1))
 			break;
 
 		channel->incomingSequenceNumber = incomingCommand->sequenceNumber;
-		//将fragement的序号加上
+
 		if (incomingCommand->fragmentCount > 0)
 			channel->incomingSequenceNumber += incomingCommand->fragmentCount - 1;
 	}
@@ -621,7 +620,7 @@ void mrtp_peer_dispatch_incoming_reliable_commands(MRtpPeer * peer, MRtpChannel 
 	if (currentCommand == mrtp_list_begin(&channel->incomingCommands))
 		return;
 
-	//移动到dispatch队列
+	// move command from incomingCommand queue to dispatchedCommand queue
 	mrtp_list_move(mrtp_list_end(&peer->dispatchedCommands), mrtp_list_begin(&channel->incomingCommands), mrtp_list_previous(currentCommand));
 
 	if (!peer->needsDispatch) {
@@ -681,9 +680,39 @@ void mrtp_peer_dispatch_incoming_redundancy_noack_commands(MRtpPeer * peer, MRtp
 
 void mrtp_peer_dispatch_incoming_redundancy_commands(MRtpPeer * peer, MRtpChannel * channel) {
 
+	MRtpListIterator currentCommand;
+
+	for (currentCommand = mrtp_list_begin(&channel->incomingCommands);
+		currentCommand != mrtp_list_end(&channel->incomingCommands);
+		currentCommand = mrtp_list_next(currentCommand))
+	{
+		MRtpIncomingCommand * incomingCommand = (MRtpIncomingCommand *)currentCommand;
+
+		//if fragment hasn't been received entirly or the sequence number is not contunual
+		if (incomingCommand->fragmentsRemaining > 0 ||
+			incomingCommand->sequenceNumber != (mrtp_uint16)(channel->incomingSequenceNumber + 1))
+			break;
+
+		channel->incomingSequenceNumber = incomingCommand->sequenceNumber;
+
+		if (incomingCommand->fragmentCount > 0)
+			channel->incomingSequenceNumber += incomingCommand->fragmentCount - 1;
+	}
+
+	// the incomingCommand queue is empty
+	if (currentCommand == mrtp_list_begin(&channel->incomingCommands))
+		return;
+
+	// move command from incomingCommand queue to dispatchedCommand queue
+	mrtp_list_move(mrtp_list_end(&peer->dispatchedCommands), mrtp_list_begin(&channel->incomingCommands), mrtp_list_previous(currentCommand));
+
+	if (!peer->needsDispatch) {
+		mrtp_list_insert(mrtp_list_end(&peer->host->dispatchQueue), &peer->dispatchList);
+
+		peer->needsDispatch = 1;
+	}
+
 }
-
-
 
 MRtpIncomingCommand *mrtp_peer_queue_incoming_command(MRtpPeer * peer, const MRtpProtocol * command,
 	const void * data, size_t dataLength, mrtp_uint32 flags, mrtp_uint32 fragmentCount, mrtp_uint16 sentTime)

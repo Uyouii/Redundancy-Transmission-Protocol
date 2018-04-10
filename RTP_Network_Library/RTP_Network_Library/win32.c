@@ -1,6 +1,5 @@
 ﻿#ifdef _WIN32
 
-#define MRTP_BUILDING_LIB 1
 #include "mrtp.h"
 #include <windows.h>
 #include <mmsystem.h>

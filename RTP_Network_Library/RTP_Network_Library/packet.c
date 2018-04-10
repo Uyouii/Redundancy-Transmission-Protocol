@@ -1,5 +1,4 @@
 #include <string.h>
-#define MRTP_BUILDING_LIB 1
 #include "mrtp.h"
 
 MRtpPacket * mrtp_packet_create(const void * data, size_t dataLength, mrtp_uint32 flags) {
