@@ -240,7 +240,6 @@ static int mrtp_protocol_check_timeouts(MRtpHost * host, MRtpPeer * peer, MRtpEv
 			else if (commandNumber == MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_FRAGMENT) {
 
 			}
-
 		}
 
 		if (!mrtp_list_empty(&peer->sentRedundancyCommands)) {
@@ -330,6 +329,7 @@ static void mrtp_protocol_send_acknowledgements(MRtpHost * host, MRtpPeer * peer
 		command->header.sequenceNumber = reliableSequenceNumber;
 		command->acknowledge.receivedReliableSequenceNumber = reliableSequenceNumber;
 		command->acknowledge.receivedSentTime = MRTP_HOST_TO_NET_16(acknowledgement->sentTime);
+		command->acknowledge.channelID = channelIDs[acknowledgement->command.header.command & MRTP_PROTOCOL_COMMAND_MASK];
 
 #ifdef SENDANDRECEIVE
 		printf("add buffer [ack]: (%d) at channel: [%d]\n",
@@ -1137,7 +1137,7 @@ static int mrtp_protocol_handle_acknowledge(MRtpHost * host, MRtpEvent * event,
 
 	receivedReliableSequenceNumber = MRTP_NET_TO_HOST_16(command->acknowledge.receivedReliableSequenceNumber);
 
-	channelID = channelIDs[command->header.command];
+	channelID = command->acknowledge.channelID;
 	commandNumber = mrtp_protocol_remove_sent_reliable_command(peer, receivedReliableSequenceNumber, channelID);
 
 	switch (peer->state)
@@ -1229,13 +1229,33 @@ static MRtpProtocolCommand mrtp_protocol_remove_sent_redundancy_command(MRtpPeer
 	*/
 
 	for (currentCommand = mrtp_list_begin(&peer->sentRedundancyCommands);
-		currentCommand != mrtp_list_end(&peer->sentRedundancyCommands);
-		currentCommand = mrtp_list_next(currentCommand))
+		currentCommand != mrtp_list_end(&peer->sentRedundancyCommands);)
 	{
 		outgoingCommand = (MRtpOutgoingCommand *)currentCommand;
+		currentCommand = mrtp_list_next(currentCommand);
 		outgoingCommand->fastAck++;
-		// quickly retransmit
-		// if(outgoingCommand->fastAck > 1)
+
+		// quickly retransmit, if the command are jumped quickRetransmitNum, then quickly retransmit
+		if (outgoingCommand->fastAck > peer->quickRetransmitNum) {
+
+			++peer->packetsLost;
+
+			mrtp_list_insert(mrtp_list_end(&peer->readytoDeleteRedundancyCommands),
+				mrtp_list_remove(&outgoingCommand->outgoingCommandList));
+
+#ifdef PACKETLOSSDEBUG
+			printf("[%s]: [%d] Loss!\n",
+				commandName[outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK],
+				MRTP_NET_TO_HOST_16(outgoingCommand->command.header.sequenceNumber));
+#endif // PACKETLOSSDEBUG
+
+			MRtpProtocol sendCommand;
+			sendCommand.header.command = MRTP_PROTOCOL_COMMAND_RETRANSMIT_REDUNDANCY | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
+			sendCommand.retransmitRedundancy.dataLength = outgoingCommand->command.sendRedundancy.dataLength;
+			sendCommand.retransmitRedundancy.retransmitSequenceNumber = outgoingCommand->command.header.sequenceNumber;
+			mrtp_peer_queue_outgoing_command(peer, &sendCommand, outgoingCommand->packet, 0, outgoingCommand->packet->dataLength);
+
+		}
 
 		if (outgoingCommand->sequenceNumber == sequenceNumber)
 			break;
@@ -1867,7 +1887,7 @@ static int mrtp_protocol_handle_send_retransmit_redundancy(MRtpHost * host, MRtp
 		*currentData < host->receivedData ||
 		*currentData > & host->receivedData[host->receivedDataLength])
 		return -1;
-	
+
 	if (mrtp_peer_queue_retransmit_redundancy_command(peer, command, (const mrtp_uint8 *)command + sizeof(MRtpProtocolRetransmitRedundancy),
 		dataLength, MRTP_PACKET_FLAG_REDUNDANCY, 0, sentTime) == NULL)
 	{

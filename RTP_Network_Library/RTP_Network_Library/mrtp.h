@@ -2,7 +2,7 @@
 #define _MRTP_H_
 
 // for debug
-#define SENDANDRECEIVE
+//#define SENDANDRECEIVE
 //#define FLOWCONTROLDEBUG
 //#define RELIABLEWINDOWDEBUG
 //#define PACKETLOSSDEBUG

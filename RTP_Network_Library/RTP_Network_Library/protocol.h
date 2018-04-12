@@ -76,7 +76,7 @@ typedef enum _MRtpProtocolFlag {
 
 typedef struct _MRtpProtocolHeader {
 	mrtp_uint16 peerID;
-	mrtp_uint16 sentTime; 
+	mrtp_uint16 sentTime;
 } MRTP_PACKED MRtpProtocolHeader;
 
 typedef struct _MRtpProtocolCommandHeader {
@@ -89,6 +89,7 @@ typedef struct _MRtpProtocolAcknowledge {
 	MRtpProtocolCommandHeader header;
 	mrtp_uint16 receivedReliableSequenceNumber;
 	mrtp_uint16 receivedSentTime;
+	mrtp_uint8 channelID;
 } MRTP_PACKED MRtpProtocolAcknowledge;
 
 typedef struct _MRtpProtocolConnect {
