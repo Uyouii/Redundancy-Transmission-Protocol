@@ -90,7 +90,7 @@ MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount,
 		mrtp_list_clear(&currentPeer->outgoingRedundancyCommands);
 		mrtp_list_clear(&currentPeer->outgoingRedundancyNoAckCommands);
 		mrtp_list_clear(&currentPeer->sentRedundancyCommands);
-		mrtp_list_clear(&currentPeer->alreadyReceivedRedundancyCommands);
+		mrtp_list_clear(&currentPeer->readytoDeleteRedundancyCommands);
 
 		mrtp_peer_reset(currentPeer);
 	}
@@ -262,9 +262,9 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 
 			peerBandwidth = (peer->incomingBandwidth * elapsedTime) / 1000;	//peer在间隔时间内能接收的最大数据
 
-			// if((peerBandwidth * MRTP_PEER_PACKET_THROTTLE_SCALE)/ peer->outgoingDataTotal >= throttle)
-			// 如果peer接收数据的能力/peer接收的数据量大于host发送数据的能力/host发送的数据量
-			// 即peer接收能力大于平均水平，则不调节
+																			// if((peerBandwidth * MRTP_PEER_PACKET_THROTTLE_SCALE)/ peer->outgoingDataTotal >= throttle)
+																			// 如果peer接收数据的能力/peer接收的数据量大于host发送数据的能力/host发送的数据量
+																			// 即peer接收能力大于平均水平，则不调节
 			if ((throttle * peer->outgoingDataTotal) / MRTP_PEER_PACKET_THROTTLE_SCALE <= peerBandwidth)
 				continue;
 

@@ -93,7 +93,7 @@ void mrtp_peer_reset_queues(MRtpPeer * peer) {
 	mrtp_peer_reset_outgoing_commands(&peer->outgoingRedundancyCommands);
 	mrtp_peer_reset_outgoing_commands(&peer->outgoingRedundancyNoAckCommands);
 	mrtp_peer_reset_outgoing_commands(&peer->sentRedundancyCommands);
-	mrtp_peer_reset_outgoing_commands(&peer->alreadyReceivedRedundancyCommands);
+	mrtp_peer_reset_outgoing_commands(&peer->readytoDeleteRedundancyCommands);
 	mrtp_peer_reset_incoming_commands(&peer->dispatchedCommands);
 
 	if (peer->channels != NULL && peer->channelCount > 0) {
@@ -204,6 +204,8 @@ void mrtp_peer_setup_outgoing_command(MRtpPeer * peer, MRtpOutgoingCommand * out
 	outgoingCommand->sentTime = 0;
 	outgoingCommand->roundTripTimeout = 0;
 	outgoingCommand->roundTripTimeoutLimit = 0;
+	outgoingCommand->fastAck = 0;
+	outgoingCommand->redundancyBufferNum = 0xFFFF;
 	outgoingCommand->command.header.sequenceNumber = MRTP_HOST_TO_NET_16(outgoingCommand->sequenceNumber);
 
 	if (channelID == MRTP_PROTOCOL_RELIABLE_CHANNEL_NUM || channelID == 0xFF) {

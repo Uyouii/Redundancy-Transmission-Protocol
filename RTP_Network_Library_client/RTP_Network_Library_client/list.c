@@ -1,12 +1,6 @@
 ﻿#include "list.h"
 
-/**
-@defgroup list MRtp linked list utility functions
-@ingroup private
-@{
-*/
-void
-mrtp_list_clear(MRtpList * list) {
+void mrtp_list_clear(MRtpList * list) {
 	list->sentinel.next = &list->sentinel;
 	list->sentinel.previous = &list->sentinel;
 }
@@ -62,4 +56,3 @@ size_t mrtp_list_size(MRtpList * list) {
 	return size;
 }
 
-/** @} */

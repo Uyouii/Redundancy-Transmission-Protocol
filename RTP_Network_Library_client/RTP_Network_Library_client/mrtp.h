@@ -5,7 +5,7 @@
 #define SENDANDRECEIVE
 //#define FLOWCONTROLDEBUG
 //#define RELIABLEWINDOWDEBUG
-//#define PACKETLOSSDEBUG
+#define PACKETLOSSDEBUG
 
 #ifdef __cplusplus
 extern "C"
@@ -102,7 +102,8 @@ extern "C"
 		mrtp_uint32  fragmentOffset;
 		mrtp_uint16  fragmentLength;
 		mrtp_uint16  sendAttempts;
-		size_t redundancyBufferNum;
+		mrtp_uint16	 redundancyBufferNum;
+		mrtp_uint16  fastAck;
 		MRtpProtocol command;
 		MRtpPacket * packet;
 	} MRtpOutgoingCommand;
@@ -240,7 +241,7 @@ extern "C"
 		MRtpList sentReliableCommands;
 		MRtpList sentRedundancyNoAckCommands;
 		MRtpList sentRedundancyCommands;			// already sent
-		MRtpList alreadyReceivedRedundancyCommands;	// peer already receive and ready to delete
+		MRtpList readytoDeleteRedundancyCommands;	// ready to delete
 		MRtpList outgoingReliableCommands;
 		MRtpList outgoingRedundancyCommands;
 		MRtpList outgoingRedundancyNoAckCommands;

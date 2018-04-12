@@ -3,6 +3,7 @@
 #include "mrtp.h"
 #include <windows.h>
 #include <mmsystem.h>
+#include <time.h>
 
 static mrtp_uint32 timeBase = 0;
 
@@ -256,23 +257,35 @@ int mrtp_socket_send(MRtpSocket socket, const MRtpAddress * address,
 		sin.sin_addr.s_addr = address->host;
 	}
 
-	if (WSASendTo(socket,
-		(LPWSABUF)buffers,
-		(DWORD)bufferCount,
-		&sentLength,
-		0,
-		address != NULL ? (struct sockaddr *) & sin : NULL,
-		address != NULL ? sizeof(struct sockaddr_in) : 0,
-		NULL,
-		NULL) == SOCKET_ERROR) 
-	{
-		if (WSAGetLastError() == WSAEWOULDBLOCK)
-			return 0;
+#ifdef PACKETLOSSDEBUG
+	static int hassend = 0;
+	if (hassend <= 2 || rand() % 100 >= 70) {
+		hassend++;
+#endif // PACKETLOSSDEBUG
 
-		return -1;
+		if (WSASendTo(socket,
+			(LPWSABUF)buffers,
+			(DWORD)bufferCount,
+			&sentLength,
+			0,
+			address != NULL ? (struct sockaddr *) & sin : NULL,
+			address != NULL ? sizeof(struct sockaddr_in) : 0,
+			NULL,
+			NULL) == SOCKET_ERROR)
+		{
+			if (WSAGetLastError() == WSAEWOULDBLOCK)
+				return 0;
+
+			return -1;
+		}
+
+		return (int)sentLength;
+#ifdef PACKETLOSSDEBUG
 	}
-
-	return (int)sentLength;
+	else {
+		return 0;
+	}
+#endif // PACKETLOSSDEBUG
 }
 
 int mrtp_socket_receive(MRtpSocket socket, MRtpAddress * address, MRtpBuffer * buffers, size_t bufferCount) {

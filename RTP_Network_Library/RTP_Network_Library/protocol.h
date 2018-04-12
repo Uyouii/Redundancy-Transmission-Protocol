@@ -44,7 +44,8 @@ typedef enum _MRtpProtocolCommand {
 	MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_FRAGMENT = 13,
 	MRTP_PROTOCOL_COMMAND_SET_QUICK_RETRANSMIT = 14,
 	MRTP_PROTOCOL_COMMAND_REDUNDANCY_ACKNOWLEDGE = 15,
-	MRTP_PROTOCOL_COMMAND_COUNT = 16,
+	MRTP_PROTOCOL_COMMAND_RETRANSMIT_REDUNDANCY = 16,
+	MRTP_PROTOCOL_COMMAND_COUNT = 17,
 
 	MRTP_PROTOCOL_COMMAND_MASK = 0x1F
 } MRtpProtocolCommand;
@@ -163,6 +164,12 @@ typedef struct _MRtpProtocolSendRedundancy {
 	mrtp_uint16 dataLength;
 } MRTP_PACKED MRtpProtocolSendRedundancy;
 
+typedef struct _MRtpProtocolRetransmitRedundancy {
+	MRtpProtocolCommandHeader header;
+	mrtp_uint16 dataLength;
+	mrtp_uint16 retransmitSequenceNumber;
+} MRTP_PACKED MRtpProtocolRetransmitRedundancy;
+
 typedef struct _MRtpProtocolSendRedundancyFragment {
 	MRtpProtocolCommandHeader header;
 	mrtp_uint16 startSequenceNumber;
@@ -217,6 +224,7 @@ typedef union _MRtpProtocol {
 	MRtpProtocolSendRedundancyFragment sendRedundancyFragment;
 	MRtpProtocolSetQuickRetransmit setQuickRestrnsmit;
 	MRtpProtocolRedundancyAcknowledge redundancyAcknowledge;
+	MRtpProtocolRetransmitRedundancy retransmitRedundancy;
 } MRTP_PACKED MRtpProtocol;
 
 #ifdef _MSC_VER
