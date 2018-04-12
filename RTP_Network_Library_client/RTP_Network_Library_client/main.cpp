@@ -73,13 +73,13 @@ int main(int argc, char ** argv) {
 		if (disconnected)
 			break;
 		if (hasconnected && !disconnected && (peer->outgoingReliableSequenceNumber > 10 ||
-			peer->channels[MRTP_PROTOCOL_RELIABLE_CHANNEL_NUM].outgoingSequenceNumber > 10) ||
+			peer->channels[MRTP_PROTOCOL_RELIABLE_CHANNEL_NUM].outgoingSequenceNumber > 20) ||
 			(peer->channels[MRTP_PROTOCOL_REDUNDANCY_NOACK_CHANNEL_NUM].outgoingSequenceNumber > 10) ||
 			(peer->channels[MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM].outgoingSequenceNumber > 100)) {
-			mrtp_peer_disconnect(peer, 0);
-			disconnected = true;
+			//mrtp_peer_disconnect(peer, 0);
+			//disconnected = true;
 		}
-		if (hasconnected && !disconnected) {
+		else if (hasconnected && !disconnected) {
 			std::string packet_str = "packct" + std::to_string(packetNum) + " at peer" + std::to_string(peer->outgoingPeerID);
 			packet_str += std::string(5, 'a');
 			MRtpPacket * packet = mrtp_packet_create(packet_str.c_str(), packet_str.size() + 1, MRTP_PACKET_FLAG_REDUNDANCY);

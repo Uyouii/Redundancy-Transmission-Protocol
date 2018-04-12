@@ -41,7 +41,7 @@ mrtp_uint8 channelIDs[] = {
 	MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM,		//send reliable redundancy
 	0xFF,										//send quick retransmit number
 	0xFF,										//redundancy ack
-	MRTP_PROTOCOL_RELIABLE_CHANNEL_NUM,			//retransmit Redundancy
+	0xFF,										//retransmit Redundancy
 };
 
 char* commandName[] = {
@@ -167,7 +167,8 @@ static int mrtp_protocol_check_timeouts(MRtpHost * host, MRtpPeer * peer, MRtpEv
 			outgoingCommand->roundTripTimeout += outgoingCommand->roundTripTimeout / 2;
 
 #ifdef PACKETLOSSDEBUG
-			printf("seqnum [%d] Loss! change rto to: [%d]\n",
+			printf("[%s]: [%d] Loss! change rto to: [%d]\n",
+				commandName[outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK],
 				MRTP_NET_TO_HOST_16(outgoingCommand->command.header.sequenceNumber),
 				outgoingCommand->roundTripTimeout);
 #endif // PACKETLOSSDEBUG
@@ -225,7 +226,8 @@ static int mrtp_protocol_check_timeouts(MRtpHost * host, MRtpPeer * peer, MRtpEv
 			if (commandNumber == MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY) {
 
 #ifdef PACKETLOSSDEBUG
-				printf("seqnum [%d] Loss! retransmit reliable\n",
+				printf("[%s]: [%d] Loss!\n",
+					commandName[outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK],
 					MRTP_NET_TO_HOST_16(outgoingCommand->command.header.sequenceNumber));
 #endif // PACKETLOSSDEBUG
 
@@ -1256,7 +1258,7 @@ static MRtpProtocolCommand mrtp_protocol_remove_sent_redundancy_command(MRtpPeer
 	outgoingCommand = (MRtpOutgoingCommand *)mrtp_list_begin(&peer->sentRedundancyCommands);
 	peer->nextRedundancyTimeout = outgoingCommand->sentTime + outgoingCommand->roundTripTimeout;
 #ifdef PACKETLOSSDEBUG
-	printf("peer nextRedundancyTimeout: %d host service time: %d\n", 
+	printf("peer nextRedundancyTimeout: %d host service time: %d\n",
 		peer->nextRedundancyTimeout, peer->host->serviceTime);
 #endif // PACKETLOSSDEBUG
 
@@ -1858,13 +1860,19 @@ static int mrtp_protocol_handle_send_retransmit_redundancy(MRtpHost * host, MRtp
 	size_t dataLength;
 	if (peer->state != MRTP_PEER_STATE_CONNECTED && peer->state != MRTP_PEER_STATE_DISCONNECT_LATER)
 		return -1;
-	dataLength = MRTP_NET_TO_HOST_16(command->sendRedundancy.dataLength);
+	dataLength = MRTP_NET_TO_HOST_16(command->retransmitRedundancy.dataLength);
 
 	*currentData += dataLength;
 	if (dataLength > host->maximumPacketSize ||
 		*currentData < host->receivedData ||
 		*currentData > & host->receivedData[host->receivedDataLength])
 		return -1;
+
+	if (mrtp_peer_queue_retransmit_redundancy_command(peer, command, (const mrtp_uint8 *)command + sizeof(MRtpProtocolRetransmitRedundancy),
+		dataLength, MRTP_PACKET_FLAG_REDUNDANCY, 0, sentTime) == NULL)
+	{
+		return -1;
+	}
 
 	return 0;
 }

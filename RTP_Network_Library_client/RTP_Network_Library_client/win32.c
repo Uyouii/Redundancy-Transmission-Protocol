@@ -108,7 +108,7 @@ int mrtp_socket_bind(MRtpSocket socket, const MRtpAddress * address) {
 		sin.sin_addr.s_addr = INADDR_ANY;
 	}
 
-	return bind(socket, (struct sockaddr *) & sin, sizeof(struct sockaddr_in)) 
+	return bind(socket, (struct sockaddr *) & sin, sizeof(struct sockaddr_in))
 		== SOCKET_ERROR ? -1 : 0;
 }
 
@@ -243,7 +243,7 @@ void mrtp_socket_destroy(MRtpSocket socket) {
 		closesocket(socket);
 }
 
-int mrtp_socket_send(MRtpSocket socket, const MRtpAddress * address, 
+int mrtp_socket_send(MRtpSocket socket, const MRtpAddress * address,
 	const MRtpBuffer * buffers, size_t bufferCount) {
 
 	struct sockaddr_in sin;
@@ -259,7 +259,7 @@ int mrtp_socket_send(MRtpSocket socket, const MRtpAddress * address,
 
 #ifdef PACKETLOSSDEBUG
 	static int hassend = 0;
-	if (hassend <= 2 || rand() % 100 >= 70) {
+	if (hassend <= 2 || rand() % 100 >= 30) {
 		hassend++;
 #endif // PACKETLOSSDEBUG
 
@@ -325,7 +325,7 @@ int mrtp_socket_receive(MRtpSocket socket, MRtpAddress * address, MRtpBuffer * b
 	return (int)recvLength;
 }
 
-int mrtp_socketset_select(MRtpSocket maxSocket, MRtpSocketSet * readSet, 
+int mrtp_socketset_select(MRtpSocket maxSocket, MRtpSocketSet * readSet,
 	MRtpSocketSet * writeSet, mrtp_uint32 timeout) {
 
 	struct timeval timeVal;

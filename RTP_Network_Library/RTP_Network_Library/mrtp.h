@@ -379,6 +379,8 @@ extern "C"
 	extern void mrtp_peer_setup_outgoing_command(MRtpPeer *, MRtpOutgoingCommand *);
 	extern MRtpOutgoingCommand * mrtp_peer_queue_outgoing_command(MRtpPeer *, const MRtpProtocol *, MRtpPacket *, mrtp_uint32, mrtp_uint16);
 	extern MRtpIncomingCommand * mrtp_peer_queue_incoming_command(MRtpPeer *, const MRtpProtocol *, const void *, size_t, mrtp_uint32, mrtp_uint32, mrtp_uint16);
+	extern MRtpIncomingCommand * mrtp_peer_queue_retransmit_redundancy_command(MRtpPeer * peer, const MRtpProtocol * command,
+		const void * data, size_t dataLength, mrtp_uint32 flags, mrtp_uint32 fragmentCount, mrtp_uint16 sentTime);
 	extern MRtpAcknowledgement * mrtp_peer_queue_acknowledgement(MRtpPeer *, const MRtpProtocol *, mrtp_uint16);
 	extern void mrtp_peer_dispatch_incoming_reliable_commands(MRtpPeer *, MRtpChannel *);
 	extern void mrtp_peer_dispatch_incoming_redundancy_noack_commands(MRtpPeer*, MRtpChannel *);

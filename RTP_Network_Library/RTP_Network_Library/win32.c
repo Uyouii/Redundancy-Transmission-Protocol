@@ -259,8 +259,8 @@ int mrtp_socket_send(MRtpSocket socket, const MRtpAddress * address,
 
 #ifdef PACKETLOSSDEBUG
 	static int hassend = 0;
-	if (!hassend || rand() % 100 >= 50) {
-		hassend = 1;
+	if (hassend <= 2 || rand() % 100 >= 70) {
+		hassend++;
 #endif // PACKETLOSSDEBUG
 
 		if (WSASendTo(socket,
