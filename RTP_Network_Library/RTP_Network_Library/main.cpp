@@ -50,12 +50,13 @@ int main(int argc, char ** argv) {
 					event.peer->address.port);
 				break;
 			case MRTP_EVENT_TYPE_RECEIVE:
-				printf("A packet of length %u containing %s was received on channel %u.\n",
+				printf("Receive a Pakcet of length: %d. Sequence Number: %d, TimeStamp: %d\n",
 					event.packet->dataLength,
-					event.packet->data,
-					event.channelID);
+					*((mrtp_uint32*)event.packet->data),
+					*((mrtp_uint32*)(event.packet->data + sizeof(mrtp_uint32))));
 				/* Clean up the packet now that we're done using it. */
-				mrtp_packet_destroy(event.packet);
+				event.packet->referenceCount = 0;
+				mrtp_peer_send(event.peer, event.packet);
 				break;
 
 			case MRTP_EVENT_TYPE_DISCONNECT:
@@ -64,7 +65,7 @@ int main(int argc, char ** argv) {
 				break;
 			}
 		}
-		Sleep(30);
+		Sleep(1);
 	}
 	
 	mrtp_host_destroy(server);

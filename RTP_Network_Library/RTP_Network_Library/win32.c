@@ -257,11 +257,11 @@ int mrtp_socket_send(MRtpSocket socket, const MRtpAddress * address,
 		sin.sin_addr.s_addr = address->host;
 	}
 
-#ifdef PACKETLOSSDEBUG
+#ifdef SETPACKETLOSS
 	static int hassend = 0;
-	if (hassend <= 2 || rand() % 100 >= 70) {
+	if (hassend <= 3 || rand() % 100 >= 20) {
 		hassend++;
-#endif // PACKETLOSSDEBUG
+#endif // SETPACKETLOSS
 
 		if (WSASendTo(socket,
 			(LPWSABUF)buffers,
@@ -280,12 +280,12 @@ int mrtp_socket_send(MRtpSocket socket, const MRtpAddress * address,
 		}
 
 		return (int)sentLength;
-#ifdef PACKETLOSSDEBUG
+#ifdef SETPACKETLOSS
 	}
 	else {
 		return 0;
 	}
-#endif // PACKETLOSSDEBUG
+#endif // SETPACKETLOSS
 }
 
 int mrtp_socket_receive(MRtpSocket socket, MRtpAddress * address, MRtpBuffer * buffers, size_t bufferCount) {
