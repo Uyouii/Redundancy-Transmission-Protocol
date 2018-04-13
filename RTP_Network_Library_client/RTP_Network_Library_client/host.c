@@ -70,6 +70,7 @@ MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount,
 	host->maximumWaitingData = MRTP_HOST_DEFAULT_MAXIMUM_WAITING_DATA;
 
 	host->redundancyNum = MRTP_PROTOCOL_DEFAULT_REDUNDANCY_NUM;
+	host->openQuickRetransmit = 0;
 
 	mrtp_list_clear(&host->dispatchQueue);
 
@@ -397,4 +398,28 @@ void mrtp_host_set_redundancy_num(MRtpHost *host, mrtp_uint32 redundancy_num) {
 		redundancy_num = MRTP_PROTOCOL_MINIMUM_REDUNDANCY_NUM;
 	}
 	host->redundancyNum = redundancy_num;
+}
+
+void mrtp_host_shutdown_quick_retransmit(MRtpHost * host) {
+	host->openQuickRetransmit = 0;
+}
+
+void mrtp_host_open_quick_retransmit(MRtpHost *host, mrtp_uint32 quickRetransmit) {
+
+	MRtpPeer * currentPeer;
+
+	host->openQuickRetransmit = 1;
+
+	if (quickRetransmit > 0) {
+		if (quickRetransmit > MRTP_PROTOCOL_MAXIMUM_QUICK_RETRANSMIT) {
+			quickRetransmit = MRTP_PROTOCOL_MAXIMUM_QUICK_RETRANSMIT;
+		}
+		else if (quickRetransmit < MRTP_PROTOCOL_MINIMUM_QUICK_RETRANSMIT) {
+			quickRetransmit = MRTP_PROTOCOL_MINIMUM_QUICK_RETRANSMIT;
+		}
+
+		for (currentPeer = host->peers; currentPeer < &host->peers[host->peerCount]; ++currentPeer) {
+			currentPeer->quickRetransmitNum = quickRetransmit;
+		}
+	}
 }

@@ -107,7 +107,7 @@ int main(int argc, char ** argv) {
 			((mrtp_uint32*)buffer)[1] = currentTime;
 			slap += 30;
 			packetNum++;
-			MRtpPacket * packet = mrtp_packet_create(buffer, 8, MRTP_PACKET_FLAG_RELIABLE);
+			MRtpPacket * packet = mrtp_packet_create(buffer, 8, MRTP_PACKET_FLAG_REDUNDANCY);
 			mrtp_peer_send(peer, packet);
 		}
 

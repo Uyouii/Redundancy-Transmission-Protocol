@@ -259,7 +259,7 @@ int mrtp_socket_send(MRtpSocket socket, const MRtpAddress * address,
 
 #ifdef SETPACKETLOSS
 	static int hassend = 0;
-	if (hassend <= 3 || rand() % 100 >= 20) {
+	if (hassend <= 3 || rand() % 100 >= 10) {
 		hassend++;
 #endif // SETPACKETLOSS
 
