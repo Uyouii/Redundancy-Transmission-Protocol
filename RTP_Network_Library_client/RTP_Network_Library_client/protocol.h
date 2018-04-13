@@ -89,6 +89,7 @@ typedef struct _MRtpProtocolAcknowledge {
 	MRtpProtocolCommandHeader header;
 	mrtp_uint16 receivedReliableSequenceNumber;
 	mrtp_uint16 receivedSentTime;
+	mrtp_uint8 channelID;
 } MRTP_PACKED MRtpProtocolAcknowledge;
 
 typedef struct _MRtpProtocolConnect {
