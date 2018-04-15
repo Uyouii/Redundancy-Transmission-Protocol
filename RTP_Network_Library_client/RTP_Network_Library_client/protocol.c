@@ -775,10 +775,11 @@ static int mrtp_protocol_send_redundancy_commands(MRtpHost * host, MRtpPeer * pe
 		++peer->packetsSent;
 
 #ifdef SENDANDRECEIVE
-		printf("add buffer [%s]: (%d) at channel[%d]\n",
+		printf("add buffer [%s]: (%d) at channel[%d] redundancyBufferNum: %d\n",
 			commandName[outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK],
 			MRTP_NET_TO_HOST_16(outgoingCommand->command.header.sequenceNumber),
-			channelIDs[outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK]);
+			channelIDs[outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK],
+			peer->currentRedundancyBufferNum);
 #endif // SENDANDRECEIVE
 
 	}
@@ -1213,6 +1214,7 @@ static void mrtp_protocol_delete_redundancy_command(MRtpPeer * peer) {
 	MRtpListIterator currentCommand;
 	MRtpOutgoingCommand * outgoingCommand = NULL;
 	size_t currentRedundancyBufferNum = peer->currentRedundancyBufferNum;
+	size_t tempCurrentRedundancyBufferNum;
 
 	if (mrtp_list_empty(&peer->readytoDeleteRedundancyCommands))
 		return;
@@ -1222,11 +1224,11 @@ static void mrtp_protocol_delete_redundancy_command(MRtpPeer * peer) {
 	{
 		outgoingCommand = (MRtpOutgoingCommand *)currentCommand;
 		currentCommand = mrtp_list_next(currentCommand);
-
-		if (currentRedundancyBufferNum < outgoingCommand->redundancyBufferNum) {
-			currentRedundancyBufferNum += MRTP_PROTOCOL_MAXIMUM_REDUNDNACY_BUFFER_SIZE;
+		tempCurrentRedundancyBufferNum = currentRedundancyBufferNum;
+		if (tempCurrentRedundancyBufferNum < outgoingCommand->redundancyBufferNum) {
+			tempCurrentRedundancyBufferNum += MRTP_PROTOCOL_MAXIMUM_REDUNDNACY_BUFFER_SIZE;
 		}
-		if (currentRedundancyBufferNum - outgoingCommand->redundancyBufferNum >= peer->redundancyNum) {
+		if (tempCurrentRedundancyBufferNum - outgoingCommand->redundancyBufferNum >= peer->redundancyNum) {
 			mrtp_list_remove(&outgoingCommand->outgoingCommandList);
 
 			if (outgoingCommand->packet != NULL) {
