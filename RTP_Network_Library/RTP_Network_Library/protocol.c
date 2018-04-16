@@ -334,6 +334,15 @@ static void mrtp_protocol_send_acknowledgements(MRtpHost * host, MRtpPeer * peer
 		command->acknowledge.receivedReliableSequenceNumber = reliableSequenceNumber;
 		command->acknowledge.receivedSentTime = MRTP_HOST_TO_NET_16(acknowledgement->sentTime);
 		command->acknowledge.channelID = channelIDs[acknowledgement->command.header.command & MRTP_PROTOCOL_COMMAND_MASK];
+		if (command->acknowledge.channelID < peer->channelCount) {
+			if (peer->channels) {
+				command->acknowledge.nextUnackSequenceNumber =
+					MRTP_HOST_TO_NET_16(peer->channels[command->acknowledge.channelID].incomingSequenceNumber + 1);
+			}
+		}
+		else {
+			command->acknowledge.nextUnackSequenceNumber = 0;
+		}
 
 #ifdef SENDANDRECEIVE
 		printf("add buffer [ack]: (%d) at channel: [%d]\n",
@@ -1007,13 +1016,86 @@ static int mrtp_protocol_send_outgoing_commands(MRtpHost * host, MRtpEvent * eve
 	return 0;
 }
 
-static MRtpProtocolCommand mrtp_protocol_remove_sent_reliable_command(MRtpPeer * peer,
-	mrtp_uint16 reliableSequenceNumber, mrtp_uint8 channelID)
+static int mrtp_protocol_delete_reliable_command(MRtpHost * host, MRtpPeer * peer, MRtpEvent * event,
+	mrtp_uint16 reliableSequenceNumber,  mrtp_uint8 channelID, MRtpOutgoingCommand * outgoingCommand)
+{
+	MRtpProtocolCommand commandNumber;
+
+	if (channelID < peer->channelCount) {
+
+		MRtpChannel * channel = &peer->channels[channelID];
+		mrtp_uint16 reliableWindow = reliableSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
+
+		if (channel->commandWindows[reliableWindow] > 0) {
+			--channel->commandWindows[reliableWindow];
+			if (!channel->commandWindows[reliableWindow])
+				channel->usedReliableWindows &= ~(1 << reliableWindow);
+		}
+	}
+
+	commandNumber = (MRtpProtocolCommand)(outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK);
+
+	//remove this command from it's queue
+	mrtp_list_remove(&outgoingCommand->outgoingCommandList);
+
+	if (outgoingCommand->packet != NULL) {
+
+		peer->reliableDataInTransit -= outgoingCommand->fragmentLength;
+		--outgoingCommand->packet->referenceCount;
+
+		if (outgoingCommand->packet->referenceCount == 0) {
+			outgoingCommand->packet->flags |= MRTP_PACKET_FLAG_SENT;
+
+			mrtp_packet_destroy(outgoingCommand->packet);
+		}
+	}
+
+	mrtp_free(outgoingCommand);
+
+	switch (peer->state)
+	{
+	case MRTP_PEER_STATE_ACKNOWLEDGING_CONNECT:
+		if (commandNumber != MRTP_PROTOCOL_COMMAND_VERIFY_CONNECT)
+			return -1;
+
+		mrtp_protocol_notify_connect(host, peer, event);
+		break;
+
+	case MRTP_PEER_STATE_DISCONNECTING:
+		if (commandNumber != MRTP_PROTOCOL_COMMAND_DISCONNECT)
+			return -1;
+
+		mrtp_protocol_notify_disconnect(host, peer, event);
+		break;
+
+	case MRTP_PEER_STATE_DISCONNECT_LATER:
+		// after send all the outgoing data then disconnect
+		if (mrtp_list_empty(&peer->outgoingReliableCommands) && mrtp_list_empty(&peer->sentReliableCommands))
+			mrtp_peer_disconnect(peer, peer->eventData);
+		break;
+
+	default:
+		break;
+	}
+
+	if (mrtp_list_empty(&peer->sentReliableCommands))
+		return 0;
+
+	// set the next timeout stamp for peer
+	outgoingCommand = (MRtpOutgoingCommand *)mrtp_list_front(&peer->sentReliableCommands);
+	peer->nextTimeout = outgoingCommand->sentTime + outgoingCommand->roundTripTimeout;
+
+	return 0;
+}
+
+static int mrtp_protocol_remove_sent_reliable_command(MRtpHost* host, MRtpPeer * peer, MRtpEvent * event,
+	mrtp_uint16 reliableSequenceNumber, mrtp_uint32 nextUnackSequenceNumber, mrtp_uint8 channelID)
 {
 	MRtpOutgoingCommand * outgoingCommand = NULL;
 	MRtpListIterator currentCommand, nextCommand;
-	MRtpProtocolCommand commandNumber;
+	mrtp_uint32 currentSequenceNumber;
 	int wasSent = 1;
+	int result = 0;
 
 	for (currentCommand = mrtp_list_begin(&peer->sentReliableCommands);
 		currentCommand != mrtp_list_end(&peer->sentReliableCommands);
@@ -1021,11 +1103,23 @@ static MRtpProtocolCommand mrtp_protocol_remove_sent_reliable_command(MRtpPeer *
 	{
 		outgoingCommand = (MRtpOutgoingCommand *)currentCommand;
 		nextCommand = mrtp_list_next(currentCommand);
+		currentSequenceNumber = outgoingCommand->sequenceNumber;
 
-		if (outgoingCommand->sequenceNumber == reliableSequenceNumber &&
-			channelIDs[outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK] == channelID)
+		if (channelIDs[outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK] != channelID)
+			continue;
+
+		if (outgoingCommand->sequenceNumber == reliableSequenceNumber)
 			break;
+		// remove the already received command and the outgoing command is not disconnect
+		else if (channelID < peer->channelCount && (currentSequenceNumber < nextUnackSequenceNumber ||
+			(currentSequenceNumber - nextUnackSequenceNumber > MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE / 2 && 
+				currentSequenceNumber < nextUnackSequenceNumber + MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE)))
+		{
+			result |= mrtp_protocol_delete_reliable_command(host, peer, event, reliableSequenceNumber, channelID,
+				outgoingCommand);
+		}
 		else if (peer->host->openQuickRetransmit) {
+
 			outgoingCommand->fastAck++;
 
 			// quickly retransmit, if the command are jumped quickRetransmitNum, then quickly retransmit
@@ -1053,8 +1147,8 @@ static MRtpProtocolCommand mrtp_protocol_remove_sent_reliable_command(MRtpPeer *
 		}
 	}
 
-	//if can't find command in sentReliableCommands queue
-	//then find the command in outgoingReliableCommands queue(maybe the command has retransmited）
+	// if can't find command in sentReliableCommands queue
+	// then find the command in outgoingReliableCommands queue(maybe the command has been retransmited）
 	if (currentCommand == mrtp_list_end(&peer->sentReliableCommands)) {
 
 		for (currentCommand = mrtp_list_begin(&peer->outgoingReliableCommands);
@@ -1071,53 +1165,18 @@ static MRtpProtocolCommand mrtp_protocol_remove_sent_reliable_command(MRtpPeer *
 		}
 
 		if (currentCommand == mrtp_list_end(&peer->outgoingReliableCommands))
-			return MRTP_PROTOCOL_COMMAND_NONE;
+			return result;
 
 		wasSent = 0;
 	}
 
 	if (outgoingCommand == NULL)
-		return MRTP_PROTOCOL_COMMAND_NONE;
+		return result;
 
-	if (channelID < peer->channelCount) {
+	result |= mrtp_protocol_delete_reliable_command(host, peer, event, reliableSequenceNumber, channelID, 
+		outgoingCommand, wasSent);
 
-		MRtpChannel * channel = &peer->channels[channelID];
-		mrtp_uint16 reliableWindow = reliableSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
-
-		if (channel->commandWindows[reliableWindow] > 0) {
-			--channel->commandWindows[reliableWindow];
-			if (!channel->commandWindows[reliableWindow])
-				channel->usedReliableWindows &= ~(1 << reliableWindow);
-		}
-	}
-
-	commandNumber = (MRtpProtocolCommand)(outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK);
-
-	//remove this command from it's queue
-	mrtp_list_remove(&outgoingCommand->outgoingCommandList);
-
-	if (outgoingCommand->packet != NULL) {
-		if (wasSent)
-			peer->reliableDataInTransit -= outgoingCommand->fragmentLength;
-		--outgoingCommand->packet->referenceCount;
-
-		if (outgoingCommand->packet->referenceCount == 0) {
-			outgoingCommand->packet->flags |= MRTP_PACKET_FLAG_SENT;
-
-			mrtp_packet_destroy(outgoingCommand->packet);
-		}
-	}
-
-	mrtp_free(outgoingCommand);
-
-	if (mrtp_list_empty(&peer->sentReliableCommands))
-		return commandNumber;
-
-	// set the next timeout stamp for peer
-	outgoingCommand = (MRtpOutgoingCommand *)mrtp_list_front(&peer->sentReliableCommands);
-	peer->nextTimeout = outgoingCommand->sentTime + outgoingCommand->roundTripTimeout;
-
-	return commandNumber;
+	return result;
 }
 
 // handle the acknowledge
@@ -1125,6 +1184,7 @@ static int mrtp_protocol_handle_acknowledge(MRtpHost * host, MRtpEvent * event,
 	MRtpPeer * peer, const MRtpProtocol * command)
 {
 	mrtp_uint32 roundTripTime, receivedSentTime, receivedReliableSequenceNumber;
+	mrtp_uint16 nextUnackSequenceNumber;
 	MRtpProtocolCommand commandNumber;
 	mrtp_uint8 channelID;
 
@@ -1176,37 +1236,11 @@ static int mrtp_protocol_handle_acknowledge(MRtpHost * host, MRtpEvent * event,
 	}
 
 	receivedReliableSequenceNumber = MRTP_NET_TO_HOST_16(command->acknowledge.receivedReliableSequenceNumber);
-
+	nextUnackSequenceNumber = MRTP_NET_TO_HOST_16(command->acknowledge.nextUnackSequenceNumber);
 	channelID = command->acknowledge.channelID;
-	commandNumber = mrtp_protocol_remove_sent_reliable_command(peer, receivedReliableSequenceNumber, channelID);
+	return mrtp_protocol_remove_sent_reliable_command(host, peer,event, receivedReliableSequenceNumber,
+		nextUnackSequenceNumber,channelID);
 
-	switch (peer->state)
-	{
-	case MRTP_PEER_STATE_ACKNOWLEDGING_CONNECT:
-		if (commandNumber != MRTP_PROTOCOL_COMMAND_VERIFY_CONNECT)
-			return -1;
-
-		mrtp_protocol_notify_connect(host, peer, event);
-		break;
-
-	case MRTP_PEER_STATE_DISCONNECTING:
-		if (commandNumber != MRTP_PROTOCOL_COMMAND_DISCONNECT)
-			return -1;
-
-		mrtp_protocol_notify_disconnect(host, peer, event);
-		break;
-
-	case MRTP_PEER_STATE_DISCONNECT_LATER:
-		// after send all the outgoing data then disconnect
-		if (mrtp_list_empty(&peer->outgoingReliableCommands) && mrtp_list_empty(&peer->sentReliableCommands))
-			mrtp_peer_disconnect(peer, peer->eventData);
-		break;
-
-	default:
-		break;
-	}
-
-	return 0;
 }
 
 static void mrtp_protocol_delete_redundancy_command(MRtpPeer * peer) {
@@ -1250,26 +1284,17 @@ static void mrtp_protocol_delete_redundancy_command(MRtpPeer * peer) {
 // because all the retransmit commands are using the reliable
 // so the commands in the sentRedundancyCommands are ascending
 static void mrtp_protocol_remove_sent_redundancy_command(MRtpPeer * peer,
-	mrtp_uint16 sequenceNumber, mrtp_uint16 nextUnackSequenceNumber)
+	mrtp_uint16 sequenceNumber, mrtp_uint32 nextUnackSequenceNumber)
 {
 	MRtpOutgoingCommand * outgoingCommand = NULL;
 	MRtpOutgoingCommand * alreadyReceivedCommand = NULL;
 	MRtpListIterator currentCommand, nextCommand;
 	MRtpProtocolCommand commandNumber;
 	mrtp_uint8 needDelete = FALSE;
+	mrtp_uint32 currentSequenceNumber;
 
 	if (mrtp_list_empty(&peer->sentRedundancyCommands))
 		return MRTP_PROTOCOL_COMMAND_NONE;
-
-	//MRtpOutgoingCommand * firstSentCommand = mrtp_list_front(&peer->sentRedundancyCommands);
-	//mrtp_uint16 alreadySentNumber = firstSentCommand->sequenceNumber - 1;
-	//MRtpOutgoingCommand * endSentCommand = mrtp_list_previous(mrtp_list_end(&peer->sentRedundancyCommands));
-	//mrtp_uint16 endSentNumber = endSentCommand->sequenceNumber;
-
-	/*
-	so don't consider overflow first
-	nextUnackSequenceNumber to delete the command
-	*/
 
 	for (currentCommand = mrtp_list_begin(&peer->sentRedundancyCommands);
 		currentCommand != mrtp_list_end(&peer->sentRedundancyCommands);
@@ -1277,12 +1302,17 @@ static void mrtp_protocol_remove_sent_redundancy_command(MRtpPeer * peer,
 	{
 		outgoingCommand = (MRtpOutgoingCommand *)currentCommand;
 		nextCommand = mrtp_list_next(currentCommand);
+		currentSequenceNumber = outgoingCommand->sequenceNumber;
 
-		if (outgoingCommand->sequenceNumber == sequenceNumber) {
+		if (currentSequenceNumber == sequenceNumber) {
 			needDelete = TRUE;
 			break;
 		}
-		else if (outgoingCommand->sequenceNumber < nextUnackSequenceNumber) {
+		// if peer already receive the command
+		else if (currentSequenceNumber < nextUnackSequenceNumber ||
+			(currentSequenceNumber - nextUnackSequenceNumber > MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE / 2 &&
+				currentSequenceNumber < nextUnackSequenceNumber + MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE)) 
+		{
 			needDelete = TRUE;
 			mrtp_list_insert(mrtp_list_end(&peer->readytoDeleteRedundancyCommands),
 				mrtp_list_remove(&outgoingCommand->outgoingCommandList));
@@ -1291,7 +1321,7 @@ static void mrtp_protocol_remove_sent_redundancy_command(MRtpPeer * peer,
 			outgoingCommand->fastAck++;
 
 			// quickly retransmit, if the command are jumped quickRetransmitNum, then quickly retransmit
-			if (outgoingCommand->fastAck > peer->quickRetransmitNum) {
+			if (outgoingCommand->fastAck > peer->quickRetransmitNum + peer->redundancyNum - 1) {
 
 				++peer->packetsLost;
 
@@ -1511,7 +1541,6 @@ static int mrtp_protocol_handle_verify_connect(MRtpHost * host, MRtpEvent * even
 
 	channelCount = MRTP_PROTOCOL_CHANNEL_COUNT;
 
-	//如果信息对不上= =。
 	if (MRTP_NET_TO_HOST_32(command->verifyConnect.packetThrottleInterval) != peer->packetThrottleInterval ||
 		MRTP_NET_TO_HOST_32(command->verifyConnect.packetThrottleAcceleration) != peer->packetThrottleAcceleration ||
 		MRTP_NET_TO_HOST_32(command->verifyConnect.packetThrottleDeceleration) != peer->packetThrottleDeceleration ||
@@ -1523,8 +1552,8 @@ static int mrtp_protocol_handle_verify_connect(MRtpHost * host, MRtpEvent * even
 		return -1;
 	}
 
-	// connect command的sequence number一定是1，所以这里删除sequence number为1的command
-	mrtp_protocol_remove_sent_reliable_command(peer, 1, 0xFF);
+	// the sequence of connect is 1, and next unack sequence number is 2
+	mrtp_protocol_remove_sent_reliable_command(host, peer, event, 1, 2, 0xFF);
 
 	peer->outgoingPeerID = MRTP_NET_TO_HOST_16(command->verifyConnect.outgoingPeerID);
 	peer->incomingSessionID = command->verifyConnect.incomingSessionID;
@@ -2269,12 +2298,12 @@ int mrtp_host_service(MRtpHost * host, MRtpEvent * event, mrtp_uint32 timeout) {
 		event->packet = NULL;
 
 		switch (mrtp_protocol_dispatch_incoming_commands(host, event)) {
-		case 1:
-			return 1;
-		case -1:
-			return -1;
-		default:
-			break;
+			case 1:
+				return 1;
+			case -1:
+				return -1;
+			default:
+				break;
 		}
 	}
 
@@ -2288,12 +2317,12 @@ int mrtp_host_service(MRtpHost * host, MRtpEvent * event, mrtp_uint32 timeout) {
 			mrtp_host_bandwidth_throttle(host);
 
 		switch (mrtp_protocol_send_outgoing_commands(host, event, 1)) {
-		case 1:
-			return 1;
-		case -1:
-			return -1;
-		default:
-			break;
+			case 1:
+				return 1;
+			case -1:
+				return -1;
+			default:
+				break;
 		}
 
 		//switch (mrtp_protocol_send_redundancy_outgoing_commands(host, event, 1)) {
@@ -2306,31 +2335,31 @@ int mrtp_host_service(MRtpHost * host, MRtpEvent * event, mrtp_uint32 timeout) {
 		//}
 
 		switch (mrtp_protocol_receive_incoming_commands(host, event)) {
-		case 1:
-			return 1;
-		case -1:
-			return -1;
-		default:
-			break;
-		}
-
-		switch (mrtp_protocol_send_outgoing_commands(host, event, 1)) {
-		case 1:
-			return 1;
-		case -1:
-			return -1;
-		default:
-			break;
-		}
-
-		if (event != NULL) {
-			switch (mrtp_protocol_dispatch_incoming_commands(host, event)) {
 			case 1:
 				return 1;
 			case -1:
 				return -1;
 			default:
 				break;
+		}
+
+		switch (mrtp_protocol_send_outgoing_commands(host, event, 1)) {
+			case 1:
+				return 1;
+			case -1:
+				return -1;
+			default:
+				break;
+		}
+
+		if (event != NULL) {
+			switch (mrtp_protocol_dispatch_incoming_commands(host, event)) {
+				case 1:
+					return 1;
+				case -1:
+					return -1;
+				default:
+					break;
 			}
 		}
 		//如果超时了没有任何事件产生，则返回

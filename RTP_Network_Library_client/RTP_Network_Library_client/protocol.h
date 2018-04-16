@@ -22,7 +22,7 @@ enum {
 
 	MRTP_PROTOCOL_MAXIMUM_REDUNDNACY_BUFFER_SIZE = 600,
 
-	MRTP_PROTOCOL_DEFAULT_QUICK_RETRANSMIT = 5,
+	MRTP_PROTOCOL_DEFAULT_QUICK_RETRANSMIT = 3,
 	MRTP_PROTOCOL_MAXIMUM_QUICK_RETRANSMIT = 10,
 	MRTP_PROTOCOL_MINIMUM_QUICK_RETRANSMIT = 3,
 };
@@ -89,6 +89,7 @@ typedef struct _MRtpProtocolAcknowledge {
 	MRtpProtocolCommandHeader header;
 	mrtp_uint16 receivedReliableSequenceNumber;
 	mrtp_uint16 receivedSentTime;
+	mrtp_uint16 nextUnackSequenceNumber;	//the packet before this seq number has already received
 	mrtp_uint8 channelID;
 } MRTP_PACKED MRtpProtocolAcknowledge;
 

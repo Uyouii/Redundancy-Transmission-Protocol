@@ -39,6 +39,7 @@ int main(int argc, char ** argv) {
 	}
 
 	MRtpHost* server = createServer();
+	mrtp_host_open_quick_retransmit(server, 3);
 
 	MRtpEvent event;
 	/* Wait up to 1000 milliseconds for an event. */

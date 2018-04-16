@@ -35,6 +35,7 @@ int main(int argc, char ** argv) {
 		exit(EXIT_FAILURE);
 	}
 	MRtpHost* client = createClient();
+	mrtp_host_open_quick_retransmit(client, 3);
 
 	MRtpAddress address;
 	MRtpEvent event;
@@ -55,7 +56,7 @@ int main(int argc, char ** argv) {
 
 	bool disconnected = false;
 	bool hasconnected = false;
-	const int TOTALPACKET = 2000;
+	const int TOTALPACKET = 1000;
 	mrtp_uint32 packetNum = 1;
 	mrtp_uint32 currentTime = (mrtp_uint32)timeGetTime();
 	mrtp_uint32 slap = currentTime + 30;
@@ -108,7 +109,7 @@ int main(int argc, char ** argv) {
 			((mrtp_uint32*)buffer)[1] = currentTime;
 			slap += 30;
 			packetNum++;
-			MRtpPacket * packet = mrtp_packet_create(buffer, 8, MRTP_PACKET_FLAG_REDUNDANCY);
+			MRtpPacket * packet = mrtp_packet_create(buffer, 8, MRTP_PACKET_FLAG_RELIABLE);
 			mrtp_peer_send(peer, packet);
 		}
 
