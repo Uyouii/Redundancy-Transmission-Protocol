@@ -189,8 +189,8 @@ void mrtp_peer_setup_outgoing_command(MRtpPeer * peer, MRtpOutgoingCommand * out
 	peer->outgoingDataTotal += mrtp_protocol_command_size(outgoingCommand->command.header.command) +
 		outgoingCommand->fragmentLength;
 
-	// if channel is 0xFF, it is a system command, so we add it in peer
-	// or we add it in channel
+	// if channel is 0xFF, it is a system command, so we add the sequence number of peer
+	// or add sequence number of channel
 	if (channelID == 0xFF) {
 		++peer->outgoingReliableSequenceNumber;
 		outgoingCommand->sequenceNumber = peer->outgoingReliableSequenceNumber;
@@ -280,8 +280,6 @@ MRtpAcknowledgement * mrtp_peer_queue_redundancy_acknowldegement(MRtpPeer* peer,
 
 	return acknowledgement;
 }
-
-
 
 //调节peer->packetThrottle
 int mrtp_peer_throttle(MRtpPeer * peer, mrtp_uint32 rtt) {
@@ -438,7 +436,7 @@ int mrtp_peer_send_redundancy_noack(MRtpPeer* peer, MRtpPacket* packet) {
 			return -1;
 
 		commandNumber = MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_FRAGEMENT_NO_ACK;
-		startSequenceNumber = MRTP_HOST_TO_NET_16(channel->outgoingSequenceNumber + 1);
+		startSequenceNumber = channel->outgoingSequenceNumber + 1;
 
 		mrtp_list_clear(&fragments);
 
@@ -463,7 +461,7 @@ int mrtp_peer_send_redundancy_noack(MRtpPeer* peer, MRtpPacket* packet) {
 			fragment->fragmentLength = fragmentLength;
 			fragment->packet = packet;
 			fragment->command.header.command = commandNumber;
-			fragment->command.sendRedundancyFragementNoAck.startSequenceNumber = startSequenceNumber;
+			fragment->command.sendRedundancyFragementNoAck.startSequenceNumber = MRTP_HOST_TO_NET_16(startSequenceNumber);
 			fragment->command.sendRedundancyFragementNoAck.dataLength = MRTP_HOST_TO_NET_16(fragmentLength);
 			fragment->command.sendRedundancyFragementNoAck.fragmentCount = MRTP_HOST_TO_NET_32(fragmentCount);
 			fragment->command.sendRedundancyFragementNoAck.fragmentNumber = MRTP_HOST_TO_NET_32(fragmentNumber);
@@ -507,6 +505,61 @@ int mrtp_peer_send_redundancy(MRtpPeer* peer, MRtpPacket* packet) {
 
 	if (packet->dataLength > fragmentLength) {
 
+		mrtp_uint32 fragmentCount = (packet->dataLength + fragmentLength - 1) / fragmentLength;
+		mrtp_uint32 fragmentNumber, fragmentOffset;
+		mrtp_uint8 commandNumber;
+		mrtp_uint16 startSequenceNumber;
+		MRtpList fragments;
+		MRtpOutgoingCommand * fragment;
+		
+		if (fragmentCount > MRTP_PROTOCOL_MAXIMUM_FRAGMENT_COUNT)
+			return -1;
+
+		commandNumber = MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_FRAGMENT | MRTP_PROTOCOL_COMMAND_FLAG_REDUNDANCY_ACKNOWLEDGE;
+		startSequenceNumber = channel->outgoingSequenceNumber + 1;
+		
+		mrtp_list_clear(&fragments);
+
+		for (fragmentNumber = 0, fragmentOffset = 0; fragmentOffset < packet->dataLength;
+			++fragmentNumber, fragmentOffset += fragmentLength)
+		{
+			if (packet->dataLength - fragmentOffset < fragmentLength)
+				fragmentLength = packet->dataLength - fragmentOffset;
+
+			fragment = (MRtpOutgoingCommand *)mrtp_malloc(sizeof(MRtpOutgoingCommand));
+
+			if (fragment == NULL) {
+				while (!mrtp_list_empty(&fragments)) {
+					fragment = (MRtpOutgoingCommand *)mrtp_list_remove(mrtp_list_begin(&fragments));
+					mrtp_free(fragment);
+				}
+				return -1;
+			}
+
+			fragment->fragmentOffset = fragmentOffset;
+			fragment->fragmentLength = fragmentLength;
+			fragment->packet = packet;
+			fragment->command.header.command = commandNumber;
+			fragment->command.sendRedundancyFragment.startSequenceNumber = MRTP_HOST_TO_NET_16(startSequenceNumber);
+			fragment->command.sendRedundancyFragment.dataLength = MRTP_HOST_TO_NET_16(fragmentLength);
+			fragment->command.sendRedundancyFragment.fragmentCount = MRTP_HOST_TO_NET_32(fragmentCount);
+			fragment->command.sendRedundancyFragment.fragmentNumber = MRTP_HOST_TO_NET_32(fragmentNumber);
+			fragment->command.sendRedundancyFragment.totalLength = MRTP_HOST_TO_NET_32(packet->dataLength);
+			fragment->command.sendRedundancyFragment.fragmentOffset = MRTP_HOST_TO_NET_32(fragmentOffset);
+
+			mrtp_list_insert(mrtp_list_end(&fragments), fragment);
+		}
+		packet->referenceCount += fragmentNumber;
+
+		while (!mrtp_list_empty(&fragments)) {
+
+			fragment = (MRtpOutgoingCommand *)mrtp_list_remove(mrtp_list_begin(&fragments));
+
+			mrtp_peer_setup_outgoing_command(peer, fragment);
+		}
+
+		return 0;
+
 	}
 	else {
 		command.header.command = MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY | MRTP_PROTOCOL_COMMAND_FLAG_REDUNDANCY_ACKNOWLEDGE;
@@ -541,7 +594,7 @@ int mrtp_peer_send_reliable(MRtpPeer * peer, MRtpPacket * packet) {
 			return -1;
 
 		commandNumber = MRTP_PROTOCOL_COMMAND_SEND_FRAGMENT | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
-		startSequenceNumber = MRTP_HOST_TO_NET_16(channel->outgoingSequenceNumber + 1);
+		startSequenceNumber = channel->outgoingSequenceNumber + 1;
 
 		mrtp_list_clear(&fragments);
 
@@ -566,7 +619,7 @@ int mrtp_peer_send_reliable(MRtpPeer * peer, MRtpPacket * packet) {
 			fragment->fragmentLength = fragmentLength;
 			fragment->packet = packet;
 			fragment->command.header.command = commandNumber;
-			fragment->command.sendFragment.startSequenceNumber = startSequenceNumber;
+			fragment->command.sendFragment.startSequenceNumber = MRTP_HOST_TO_NET_16(startSequenceNumber);
 			fragment->command.sendFragment.dataLength = MRTP_HOST_TO_NET_16(fragmentLength);
 			fragment->command.sendFragment.fragmentCount = MRTP_HOST_TO_NET_32(fragmentCount);
 			fragment->command.sendFragment.fragmentNumber = MRTP_HOST_TO_NET_32(fragmentNumber);
@@ -831,8 +884,9 @@ MRtpIncomingCommand *mrtp_peer_queue_incoming_command(MRtpPeer * peer, const MRt
 
 	case MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY:
 	case MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_FRAGMENT:
-
-		mrtp_peer_queue_redundancy_acknowldegement(peer, command, sentTime);
+		// the priority of & is lower than == !!!!
+		if((command->header.command & MRTP_PROTOCOL_COMMAND_MASK) == MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY)
+			mrtp_peer_queue_redundancy_acknowldegement(peer, command, sentTime);
 		mrtp_peer_dispatch_incoming_redundancy_commands(peer, channel);
 		break;
 

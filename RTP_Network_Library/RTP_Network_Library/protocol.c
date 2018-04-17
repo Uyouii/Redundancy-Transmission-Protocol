@@ -3,29 +3,29 @@
 #include "utility.h"
 #include "time.h"
 #include "mrtp.h"
-#ifdef SETPACKETLOSS
 #include <assert.h>
-#endif // SETPACKETLOSS
+
 
 
 static size_t commandSizes[MRTP_PROTOCOL_COMMAND_COUNT] = {
-	0,
-	sizeof(MRtpProtocolAcknowledge),
-	sizeof(MRtpProtocolConnect),
-	sizeof(MRtpProtocolVerifyConnect),
-	sizeof(MRtpProtocolDisconnect),
-	sizeof(MRtpProtocolPing),
-	sizeof(MRtpProtocolSendReliable),
-	sizeof(MRtpProtocolSendFragment),
-	sizeof(MRtpProtocolBandwidthLimit),
-	sizeof(MRtpProtocolThrottleConfigure),
-	sizeof(MRtpProtocolSendRedundancyNoAck),
-	sizeof(MRtpProtocolSendRedundancyFragementNoAck),
-	sizeof(MRtpProtocolSendRedundancy),
-	sizeof(MRtpProtocolSendRedundancyFragment),
-	sizeof(MRtpProtocolSetQuickRetransmit),
-	sizeof(MRtpProtocolRedundancyAcknowledge),
-	sizeof(MRtpProtocolRetransmitRedundancy),
+	0,													// 0
+	sizeof(MRtpProtocolAcknowledge),					// 1
+	sizeof(MRtpProtocolConnect),						// 2
+	sizeof(MRtpProtocolVerifyConnect),					// 3
+	sizeof(MRtpProtocolDisconnect),						// 4
+	sizeof(MRtpProtocolPing),							// 5
+	sizeof(MRtpProtocolSendReliable),					// 6
+	sizeof(MRtpProtocolSendFragment),					// 7
+	sizeof(MRtpProtocolBandwidthLimit),					// 8
+	sizeof(MRtpProtocolThrottleConfigure),				// 9
+	sizeof(MRtpProtocolSendRedundancyNoAck),			// 10
+	sizeof(MRtpProtocolSendRedundancyFragementNoAck),	// 11
+	sizeof(MRtpProtocolSendRedundancy),					// 12
+	sizeof(MRtpProtocolSendRedundancyFragment),			// 13
+	sizeof(MRtpProtocolSetQuickRetransmit),				// 14
+	sizeof(MRtpProtocolRedundancyAcknowledge),			// 15
+	sizeof(MRtpProtocolRetransmitRedundancy),			// 16
+	sizeof(MRtpProtocolRetransmitRedundancyFragment)	// 17
 };
 
 mrtp_uint8 channelIDs[] = {
@@ -40,12 +40,13 @@ mrtp_uint8 channelIDs[] = {
 	0xFF,										//bandwidth limit
 	0xFF,										//throttleconfigure
 	MRTP_PROTOCOL_REDUNDANCY_NOACK_CHANNEL_NUM,	//send redundancy no ack
-	MRTP_PROTOCOL_REDUNDANCY_NOACK_CHANNEL_NUM, //send redundancy fragement no ack
-	MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM,		//send reliable redundancy
-	MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM,		//send reliable redundancy
+	MRTP_PROTOCOL_REDUNDANCY_NOACK_CHANNEL_NUM, //send redundancy fragment no ack
+	MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM,		//send reliable redundancy 
+	MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM,		//send reliable redundancy fragment
 	0xFF,										//send quick retransmit number
 	0xFF,										//redundancy ack
-	0xFF,										//retransmit Redundancy
+	0xFF,										//retransmit redundancy
+	0xFF,										//retransmit redndancy fragment
 };
 
 char* commandName[] = {
@@ -66,6 +67,7 @@ char* commandName[] = {
 	"RetransmitConfigure",
 	"RedundancyAck",
 	"RetransmitRedundancy",
+	"RetransmitRedundancyFragment",
 };
 
 size_t mrtp_protocol_command_size(mrtp_uint8 commandNumber) {
@@ -94,11 +96,11 @@ static void mrtp_protocol_dispatch_state(MRtpHost * host, MRtpPeer * peer, MRtpP
 }
 
 static void mrtp_protocol_notify_disconnect(MRtpHost * host, MRtpPeer * peer, MRtpEvent * event) {
-	//需要重新计算带宽
+	// need to reculate the bandwidth
 	if (peer->state >= MRTP_PEER_STATE_CONNECTION_PENDING)
 		host->recalculateBandwidthLimits = 1;
 
-	// 如果三次握手还没握手完
+	// if the connection hasn't set up successfully, reset the peer directly
 	if (peer->state != MRTP_PEER_STATE_CONNECTING && peer->state < MRTP_PEER_STATE_CONNECTION_SUCCEEDED)
 		mrtp_peer_reset(peer);
 	else if (event != NULL) {
@@ -115,7 +117,7 @@ static void mrtp_protocol_notify_disconnect(MRtpHost * host, MRtpPeer * peer, MR
 }
 
 static void mrtp_protocol_notify_connect(MRtpHost * host, MRtpPeer * peer, MRtpEvent * event) {
-	//需要重新计算带宽
+	// need to reculate the bandwidth
 	host->recalculateBandwidthLimits = 1;
 
 	if (event != NULL) {
@@ -154,7 +156,7 @@ static int mrtp_protocol_check_timeouts(MRtpHost * host, MRtpPeer * peer, MRtpEv
 			if (peer->earliestTimeout == 0 || MRTP_TIME_LESS(outgoingCommand->sentTime, peer->earliestTimeout))
 				peer->earliestTimeout = outgoingCommand->sentTime;
 
-			// judeg whether a peer has disconnected
+			// judge whether a peer has disconnected
 			if (MRTP_TIME_DIFFERENCE(host->serviceTime, peer->earliestTimeout) >= peer->timeoutMaximum ||
 				(outgoingCommand->roundTripTimeout >= outgoingCommand->roundTripTimeoutLimit &&
 					MRTP_TIME_DIFFERENCE(host->serviceTime, peer->earliestTimeout) >= peer->timeoutMinimum))
@@ -847,11 +849,11 @@ static int mrtp_protocol_send_outgoing_commands(MRtpHost * host, MRtpEvent * eve
 				mrtp_protocol_send_reliable_commands(host, currentPeer);
 			}
 
-			if (!mrtp_list_empty(&currentPeer->outgoingRedundancyNoAckCommands))
-				mrtp_protocol_send_redundancy_noack_commands(host, currentPeer);
-
 			if (!mrtp_list_empty(&currentPeer->outgoingRedundancyCommands))
 				mrtp_protocol_send_redundancy_commands(host, currentPeer);
+
+			if (!mrtp_list_empty(&currentPeer->outgoingRedundancyNoAckCommands))
+				mrtp_protocol_send_redundancy_noack_commands(host, currentPeer);
 
 			MRtpRedundancyNoAckBuffer* currentRedundancyNoackBuffer =
 				&currentPeer->redundancyNoAckBuffers[currentPeer->currentRedundancyNoAckBufferNum];
@@ -1292,6 +1294,7 @@ static void mrtp_protocol_remove_sent_redundancy_command(MRtpPeer * peer,
 	MRtpProtocolCommand commandNumber;
 	mrtp_uint8 needDelete = FALSE;
 	mrtp_uint32 currentSequenceNumber;
+	mrtp_uint32 waitNum;
 
 	if (mrtp_list_empty(&peer->sentRedundancyCommands))
 		return MRTP_PROTOCOL_COMMAND_NONE;
@@ -1319,9 +1322,17 @@ static void mrtp_protocol_remove_sent_redundancy_command(MRtpPeer * peer,
 		}
 		else {
 			outgoingCommand->fastAck++;
-
+			if ((outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK) ==
+				MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_FRAGMENT)
+			{
+				mrtp_uint32 fragmentCount = MRTP_NET_TO_HOST_32(outgoingCommand->command.sendRedundancyFragment.fragmentCount);
+				waitNum = fragmentCount > peer->redundancyNum ? fragmentCount : peer->redundancyNum;
+			}
+			else {
+				waitNum = peer->redundancyNum;
+			}
 			// quickly retransmit, if the command are jumped quickRetransmitNum, then quickly retransmit
-			if (outgoingCommand->fastAck > peer->quickRetransmitNum + peer->redundancyNum - 1) {
+			if (outgoingCommand->fastAck > peer->quickRetransmitNum + waitNum - 1) {
 
 				++peer->packetsLost;
 
@@ -1847,7 +1858,9 @@ static int mrtp_protocol_handle_send_redundancy_fragment_noack(MRtpHost* host, M
 	if (fragmentCount > MRTP_PROTOCOL_MAXIMUM_FRAGMENT_COUNT || fragmentNumber >= fragmentCount ||
 		totalLength > host->maximumPacketSize || fragmentOffset >= totalLength ||
 		fragmentLength > totalLength - fragmentOffset)
+	{
 		return -1;
+	}
 
 	for (currentCommand = mrtp_list_previous(mrtp_list_end(&channel->incomingCommands));
 		currentCommand != mrtp_list_end(&channel->incomingCommands);
@@ -1929,6 +1942,116 @@ static int mrtp_protocol_handle_send_redundancy(MRtpHost * host, MRtpPeer * peer
 		dataLength, MRTP_PACKET_FLAG_REDUNDANCY, 0, sentTime) == NULL)
 	{
 		return -1;
+	}
+
+	return 0;
+}
+
+
+static int mrtp_protocol_handle_send_redundancy_fragment(MRtpHost * host, MRtpPeer * peer,
+	const MRtpProtocol * command, mrtp_uint8 ** currentData, mrtp_uint16 sentTime)
+{
+	mrtp_uint32 fragmentNumber, fragmentCount, fragmentOffset, fragmentLength;
+	mrtp_uint32 sequenceNumber, startSequenceNumber;
+	mrtp_uint32 totalLength;
+	mrtp_uint16 startWindow, currentWindow;
+	MRtpChannel * channel;
+	MRtpListIterator currentCommand;
+	MRtpIncomingCommand * startCommand = NULL;
+
+	/*
+	need to queue redundancy ack
+	*/
+	fragmentLength = MRTP_NET_TO_HOST_16(command->sendRedundancyFragment.dataLength);
+
+	*currentData += fragmentLength;
+	if (fragmentLength > host->maximumPacketSize || *currentData < host->receivedData ||
+		*currentData > & host->receivedData[host->receivedDataLength])
+		return -1;
+
+	mrtp_uint8 channelID = channelIDs[command->header.command & MRTP_PROTOCOL_COMMAND_MASK];
+	channel = &peer->channels[channelID];
+
+	sequenceNumber = command->header.sequenceNumber;
+	startSequenceNumber = MRTP_NET_TO_HOST_16(command->sendRedundancyFragment.startSequenceNumber);
+	startWindow = startSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
+
+	currentWindow = channel->incomingSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
+	if (startSequenceNumber < channel->incomingSequenceNumber)
+		startWindow += MRTP_PEER_RELIABLE_WINDOWS;
+	if (startWindow < currentWindow || startWindow >= currentWindow + MRTP_PEER_FREE_RELIABLE_WINDOWS - 1)
+		return 0;
+
+	fragmentNumber = MRTP_NET_TO_HOST_32(command->sendRedundancyFragment.fragmentNumber);
+	fragmentCount = MRTP_NET_TO_HOST_32(command->sendRedundancyFragment.fragmentCount);
+	fragmentOffset = MRTP_NET_TO_HOST_32(command->sendRedundancyFragment.fragmentOffset);
+	totalLength = MRTP_NET_TO_HOST_32(command->sendRedundancyFragment.totalLength);
+
+	if (fragmentCount > MRTP_PROTOCOL_MAXIMUM_FRAGMENT_COUNT || fragmentNumber >= fragmentCount ||
+		totalLength > host->maximumPacketSize || fragmentOffset >= totalLength ||
+		fragmentLength > totalLength - fragmentOffset)
+	{
+		return -1;
+	}
+
+	// first try to find the start command
+	for (currentCommand = mrtp_list_previous(mrtp_list_end(&channel->incomingCommands));
+		currentCommand != mrtp_list_end(&channel->incomingCommands);
+		currentCommand = mrtp_list_previous(currentCommand))
+	{
+		MRtpIncomingCommand * incomingCommand = (MRtpIncomingCommand *)currentCommand;
+
+		if (startSequenceNumber >= channel->incomingSequenceNumber) {
+			if (incomingCommand->sequenceNumber < channel->incomingSequenceNumber)
+				continue;
+		}
+		else if (incomingCommand->sequenceNumber >= channel->incomingSequenceNumber)
+			break;
+
+		if (incomingCommand->sequenceNumber <= startSequenceNumber) {
+
+			if (incomingCommand->sequenceNumber < startSequenceNumber)
+				break;
+
+			if ((incomingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK) != MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_FRAGMENT ||
+				totalLength != incomingCommand->packet->dataLength ||
+				fragmentCount != incomingCommand->fragmentCount)
+				return -1;
+
+			startCommand = incomingCommand;
+			break;
+		}
+	}
+
+	if (startCommand == NULL) {
+
+		MRtpProtocol hostCommand = *command;
+		hostCommand.header.sequenceNumber = startSequenceNumber;
+
+		startCommand = mrtp_peer_queue_incoming_command(peer, &hostCommand, NULL, totalLength,
+			MRTP_PACKET_FLAG_REDUNDANCY, fragmentCount, sentTime);
+
+		// maybe the startCommand has already been dispatched
+		if (startCommand == NULL)
+			return 0;
+	}
+	if ((startCommand->fragments[fragmentNumber / 32] & (1 << (fragmentNumber % 32))) == 0) {
+		
+		--startCommand->fragmentsRemaining;
+
+		startCommand->fragments[fragmentNumber / 32] |= (1 << (fragmentNumber % 32));
+
+		if (fragmentOffset + fragmentLength > startCommand->packet->dataLength)
+			fragmentLength = startCommand->packet->dataLength - fragmentOffset;
+
+		memcpy(startCommand->packet->data + fragmentOffset,
+			(mrtp_uint8 *)command + sizeof(MRtpProtocolSendRedundancyFragementNoAck),
+			fragmentLength);
+
+		mrtp_peer_queue_redundancy_acknowldegement(peer, command, sentTime);
+
+		if (startCommand->fragmentsRemaining <= 0)
+			mrtp_peer_dispatch_incoming_redundancy_commands(peer, channel);
 	}
 
 	return 0;
@@ -2023,6 +2146,7 @@ static int mrtp_protocol_handle_incoming_commands(MRtpHost * host, MRtpEvent * e
 	currentData = host->receivedData + headerSize;
 
 	while (currentData < &host->receivedData[host->receivedDataLength]) {
+
 		mrtp_uint8 commandNumber;
 		size_t commandSize;
 
@@ -2041,7 +2165,7 @@ static int mrtp_protocol_handle_incoming_commands(MRtpHost * host, MRtpEvent * e
 
 		currentData += commandSize;
 
-		//如果peer不存在且不是请求连接的command，则跳出循环
+		// if peer is NULL and the command isn't the connect command, then break
 		if (peer == NULL && commandNumber != MRTP_PROTOCOL_COMMAND_CONNECT)
 			break;
 		else if (peer != NULL) {
@@ -2049,6 +2173,7 @@ static int mrtp_protocol_handle_incoming_commands(MRtpHost * host, MRtpEvent * e
 		}
 
 		command->header.sequenceNumber = MRTP_NET_TO_HOST_16(command->header.sequenceNumber);
+
 #ifdef SENDANDRECEIVE
 		printf("receive [%s]: (%d) from peer: <%d> at channel: [%d]", commandName[commandNumber],
 			command->header.sequenceNumber, peerID, channelIDs[command->header.command & MRTP_PROTOCOL_COMMAND_MASK]);
@@ -2131,6 +2256,11 @@ static int mrtp_protocol_handle_incoming_commands(MRtpHost * host, MRtpEvent * e
 				goto commandError;
 			break;
 
+		case MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_FRAGMENT:
+			if (mrtp_protocol_handle_send_redundancy_fragment(host, peer, command, &currentData, sentTime))
+				goto commandError;
+			break;
+
 		case MRTP_PROTOCOL_COMMAND_RETRANSMIT_REDUNDANCY:
 			if (mrtp_protocol_handle_send_retransmit_redundancy(host, peer, command, &currentData, sentTime))
 				goto commandError;
@@ -2200,13 +2330,14 @@ static int mrtp_protocol_receive_incoming_commands(MRtpHost * host, MRtpEvent * 
 			return -1;
 		}
 
-		if (receivedLength == 0)
+		if (receivedLength == 0) {
 			return 0;
+		}
+
 
 #ifdef SENDANDRECEIVE
 		printf("receive %d\n", receivedLength);
 #endif // SENDANDRECEIVE
-
 
 		host->receivedData = host->packetData[0];
 		host->receivedDataLength = receivedLength;
@@ -2225,7 +2356,6 @@ static int mrtp_protocol_receive_incoming_commands(MRtpHost * host, MRtpEvent * 
 			break;
 		}
 	}
-
 	return -1;
 }
 
@@ -2324,15 +2454,6 @@ int mrtp_host_service(MRtpHost * host, MRtpEvent * event, mrtp_uint32 timeout) {
 			default:
 				break;
 		}
-
-		//switch (mrtp_protocol_send_redundancy_outgoing_commands(host, event, 1)) {
-		//case 1:
-		//	return 1;
-		//case -1:
-		//	return -1;
-		//default:
-		//	break;
-		//}
 
 		switch (mrtp_protocol_receive_incoming_commands(host, event)) {
 			case 1:

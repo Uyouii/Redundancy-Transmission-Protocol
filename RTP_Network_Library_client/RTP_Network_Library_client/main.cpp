@@ -57,11 +57,13 @@ int main(int argc, char ** argv) {
 	bool disconnected = false;
 	bool hasconnected = false;
 	const int TOTALPACKET = 1000;
+	const int PACKELENGTH = 500;
 	mrtp_uint32 packetNum = 1;
 	mrtp_uint32 currentTime = (mrtp_uint32)timeGetTime();
 	mrtp_uint32 slap = currentTime + 30;
 	mrtp_uint32 totalRTT = 0, maxRTT = 0;
-	mrtp_uint8 * buffer = (mrtp_uint8 *)malloc(10);
+	mrtp_uint8 * buffer = (mrtp_uint8 *)malloc(PACKELENGTH);
+	memset(buffer, 'a', PACKELENGTH);
 	/* Wait up to 5 seconds for the connection attempt to succeed. */
 	while (true) {
 
@@ -109,7 +111,7 @@ int main(int argc, char ** argv) {
 			((mrtp_uint32*)buffer)[1] = currentTime;
 			slap += 30;
 			packetNum++;
-			MRtpPacket * packet = mrtp_packet_create(buffer, 8, MRTP_PACKET_FLAG_RELIABLE);
+			MRtpPacket * packet = mrtp_packet_create(buffer, PACKELENGTH, MRTP_PACKET_FLAG_REDUNDANCY_NO_ACK);
 			mrtp_peer_send(peer, packet);
 		}
 

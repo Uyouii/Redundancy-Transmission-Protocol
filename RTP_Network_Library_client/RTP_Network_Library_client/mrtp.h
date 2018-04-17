@@ -388,10 +388,13 @@ extern "C"
 	extern MRtpAcknowledgement * mrtp_peer_queue_acknowledgement(MRtpPeer *, const MRtpProtocol *, mrtp_uint16);
 	extern void mrtp_peer_dispatch_incoming_reliable_commands(MRtpPeer *, MRtpChannel *);
 	extern void mrtp_peer_dispatch_incoming_redundancy_noack_commands(MRtpPeer*, MRtpChannel *);
+	extern void mrtp_peer_dispatch_incoming_redundancy_commands(MRtpPeer * peer, MRtpChannel * channel);
 	extern void mrtp_peer_on_connect(MRtpPeer *);
 	extern void mrtp_peer_on_disconnect(MRtpPeer *);
 	extern void mrtp_peer_reset_redundancy_noack_buffer(MRtpPeer* peer, size_t redundancyNum);
 	extern void mrtp_peer_reset_reduandancy_buffer(MRtpPeer* peer, size_t redundancyNum);
+	extern MRtpAcknowledgement * mrtp_peer_queue_redundancy_acknowldegement(MRtpPeer* peer, const MRtpProtocol * command,
+		mrtp_uint16 sentTime);
 
 
 	extern size_t mrtp_protocol_command_size(mrtp_uint8);
