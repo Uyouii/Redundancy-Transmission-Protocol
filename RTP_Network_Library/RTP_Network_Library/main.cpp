@@ -15,8 +15,8 @@ MRtpHost* createServer() {
 	server = mrtp_host_create(
 		&address /* the address to bind the server host to */,
 		8      /* allow up to 32 clients and/or outgoing connections */,
-		100000/8      /* assume any amount of incoming bandwidth */,
-		100000/8      /* assume any amount of outgoing bandwidth */
+		0      /* assume any amount of incoming bandwidth */,
+		0     /* assume any amount of outgoing bandwidth */
 	);
 
 	if (server == NULL) {
@@ -39,7 +39,7 @@ int main(int argc, char ** argv) {
 	}
 
 	MRtpHost* server = createServer();
-	mrtp_host_open_quick_retransmit(server, 3);
+	//mrtp_host_open_quick_retransmit(server, 3);
 
 	MRtpEvent event;
 	/* Wait up to 1000 milliseconds for an event. */

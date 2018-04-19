@@ -2,6 +2,7 @@
 #include "mrtp.h"
 
 extern mrtp_uint8 channelIDs[];
+extern char* commandName[];
 
 void mrtp_peer_on_disconnect(MRtpPeer * peer) {
 
@@ -184,6 +185,7 @@ MRtpOutgoingCommand * mrtp_peer_queue_outgoing_command(MRtpPeer * peer, const MR
 void mrtp_peer_setup_outgoing_command(MRtpPeer * peer, MRtpOutgoingCommand * outgoingCommand) {
 
 	mrtp_uint8 channelID = channelIDs[outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK];
+	mrtp_uint8 commandNumber;
 	MRtpChannel * channel = &peer->channels[channelID];
 
 	peer->outgoingDataTotal += mrtp_protocol_command_size(outgoingCommand->command.header.command) +
@@ -209,7 +211,9 @@ void mrtp_peer_setup_outgoing_command(MRtpPeer * peer, MRtpOutgoingCommand * out
 	outgoingCommand->command.header.sequenceNumber = MRTP_HOST_TO_NET_16(outgoingCommand->sequenceNumber);
 
 	if (channelID == MRTP_PROTOCOL_RELIABLE_CHANNEL_NUM || channelID == 0xFF) {
+
 		mrtp_list_insert(mrtp_list_end(&peer->outgoingReliableCommands), outgoingCommand);
+
 	}
 	else if (channelID == MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM) {
 		mrtp_list_insert(mrtp_list_end(&peer->outgoingRedundancyCommands), outgoingCommand);
@@ -265,20 +269,25 @@ MRtpAcknowledgement * mrtp_peer_queue_acknowledgement(MRtpPeer * peer, const MRt
 MRtpAcknowledgement * mrtp_peer_queue_redundancy_acknowldegement(MRtpPeer* peer, const MRtpProtocol * command,
 	mrtp_uint16 sentTime)
 {
-	MRtpAcknowledgement * acknowledgement;
+	mrtp_uint16 nextRedundancyNumber = peer->channels[MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM].incomingSequenceNumber + 1;
+	mrtp_uint16 sequenceNumber = MRTP_NET_TO_HOST_16(command->header.sequenceNumber);
+	if (sequenceNumber >= nextRedundancyNumber - 1) {
+		MRtpAcknowledgement * acknowledgement;
 
-	acknowledgement = (MRtpAcknowledgement *)mrtp_malloc(sizeof(MRtpAcknowledgement));
-	if (acknowledgement == NULL)
-		return NULL;
+		acknowledgement = (MRtpAcknowledgement *)mrtp_malloc(sizeof(MRtpAcknowledgement));
+		if (acknowledgement == NULL)
+			return NULL;
 
-	peer->outgoingDataTotal += sizeof(MRtpProtocolRedundancyAcknowledge);
+		peer->outgoingDataTotal += sizeof(MRtpProtocolRedundancyAcknowledge);
 
-	acknowledgement->sentTime = sentTime;
-	acknowledgement->command = *command;
+		acknowledgement->sentTime = sentTime;
+		acknowledgement->command = *command;
 
-	mrtp_list_insert(mrtp_list_end(&peer->redundancyAcknowledgemets), acknowledgement);
+		mrtp_list_insert(mrtp_list_end(&peer->redundancyAcknowledgemets), acknowledgement);
 
-	return acknowledgement;
+		return acknowledgement;
+	}
+	return NULL;
 }
 
 //调节peer->packetThrottle
@@ -770,7 +779,7 @@ void mrtp_peer_dispatch_incoming_redundancy_commands(MRtpPeer * peer, MRtpChanne
 }
 
 MRtpIncomingCommand *mrtp_peer_queue_incoming_command(MRtpPeer * peer, const MRtpProtocol * command,
-	const void * data, size_t dataLength, mrtp_uint32 flags, mrtp_uint32 fragmentCount, mrtp_uint16 sentTime)
+	const void * data, size_t dataLength, mrtp_uint32 flags, mrtp_uint32 fragmentCount)
 {
 	static MRtpIncomingCommand dummyCommand;
 	mrtp_uint8 channelID = channelIDs[command->header.command & MRTP_PROTOCOL_COMMAND_MASK];
@@ -885,103 +894,12 @@ MRtpIncomingCommand *mrtp_peer_queue_incoming_command(MRtpPeer * peer, const MRt
 	case MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY:
 	case MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_FRAGMENT:
 		// the priority of & is lower than == !!!!
-		if ((command->header.command & MRTP_PROTOCOL_COMMAND_MASK) == MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY)
-			mrtp_peer_queue_redundancy_acknowldegement(peer, command, sentTime);
 		mrtp_peer_dispatch_incoming_redundancy_commands(peer, channel);
 		break;
 
 	default:
 		break;
 	}
-
-	return incomingCommand;
-
-discardCommand:
-	if (fragmentCount > 0)
-		goto notifyError;
-
-	if (packet != NULL && packet->referenceCount == 0)
-		mrtp_packet_destroy(packet);
-
-	return &dummyCommand;
-
-notifyError:
-	if (packet != NULL && packet->referenceCount == 0)
-		mrtp_packet_destroy(packet);
-
-	return NULL;
-}
-
-MRtpIncomingCommand * mrtp_peer_queue_retransmit_redundancy_command(MRtpPeer * peer, const MRtpProtocol * command,
-	const void * data, size_t dataLength, mrtp_uint32 flags, mrtp_uint32 fragmentCount, mrtp_uint16 sentTime)
-{
-	MRtpPacket * packet = NULL;
-	static MRtpIncomingCommand dummyCommand;
-	mrtp_uint16 redundancySequenceNumber = 0;
-	// add the command to the redundancy channel
-	MRtpChannel * channel = &peer->channels[MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM];
-
-	if (peer->state == MRTP_PEER_STATE_DISCONNECT_LATER)
-		goto discardCommand;
-
-	redundancySequenceNumber = MRTP_NET_TO_HOST_16(command->retransmitRedundancy.retransmitSequenceNumber);
-
-	if (redundancySequenceNumber == channel->incomingSequenceNumber)
-		goto discardCommand;
-
-	MRtpIncomingCommand * incomingCommand;
-	MRtpListIterator currentCommand;
-
-	for (currentCommand = mrtp_list_previous(mrtp_list_end(&channel->incomingCommands));
-		currentCommand != mrtp_list_end(&channel->incomingCommands);
-		currentCommand = mrtp_list_previous(currentCommand))
-	{
-		incomingCommand = (MRtpIncomingCommand *)currentCommand;
-
-		if (redundancySequenceNumber >= channel->incomingSequenceNumber) {
-			if (incomingCommand->sequenceNumber < channel->incomingSequenceNumber)
-				continue;
-		}
-		else if (incomingCommand->sequenceNumber >= channel->incomingSequenceNumber)
-			break;
-
-		if (incomingCommand->sequenceNumber <= redundancySequenceNumber) {
-			if (incomingCommand->sequenceNumber < redundancySequenceNumber)
-				break;
-			// if the sequence number is already existed
-			goto discardCommand;
-		}
-	}
-
-	packet = mrtp_packet_create(data, dataLength, flags);
-	if (packet == NULL)
-		goto notifyError;
-
-	incomingCommand = (MRtpIncomingCommand *)mrtp_malloc(sizeof(MRtpIncomingCommand));
-	if (incomingCommand == NULL)
-		goto notifyError;
-
-	incomingCommand->sequenceNumber = redundancySequenceNumber;
-	incomingCommand->command = *command;
-	incomingCommand->fragmentCount = fragmentCount;
-	incomingCommand->fragmentsRemaining = fragmentCount;
-	incomingCommand->packet = packet;
-	incomingCommand->fragments = NULL;
-
-	if (fragmentCount > 0) {
-		/*
-		if is a fragement
-		*/
-	}
-
-	if (packet != NULL) {
-		++packet->referenceCount;
-		peer->totalWaitingData += packet->dataLength;
-	}
-
-	mrtp_list_insert(mrtp_list_next(currentCommand), incomingCommand);
-
-	mrtp_peer_dispatch_incoming_redundancy_commands(peer, channel);
 
 	return incomingCommand;
 

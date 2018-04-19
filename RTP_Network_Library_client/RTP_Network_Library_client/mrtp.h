@@ -6,7 +6,7 @@
 //#define FLOWCONTROLDEBUG
 //#define RELIABLEWINDOWDEBUG
 #define PACKETLOSSDEBUG
-#define SETPACKETLOSS
+#define SETPACKETLOSS 20
 
 #ifdef __cplusplus
 extern "C"
@@ -146,7 +146,7 @@ extern "C"
 		MRTP_HOST_DEFAULT_MAXIMUM_PACKET_SIZE = 32 * 1024 * 1024,
 		MRTP_HOST_DEFAULT_MAXIMUM_WAITING_DATA = 32 * 1024 * 1024,
 
-		MRTP_PEER_DEFAULT_ROUND_TRIP_TIME = 500,
+		MRTP_PEER_DEFAULT_ROUND_TRIP_TIME = 150,
 		MRTP_PEER_DEFAULT_PACKET_THROTTLE = 32,
 		MRTP_PEER_PACKET_THROTTLE_SCALE = 32,
 		MRTP_PEER_PACKET_THROTTLE_COUNTER = 7,
@@ -243,6 +243,7 @@ extern "C"
 		MRtpList sentRedundancyNoAckCommands;
 		MRtpList sentRedundancyCommands;			// already sent
 		MRtpList readytoDeleteRedundancyCommands;	// ready to delete
+		MRtpList retransmitRedundancyCommands;		// retransmit queue
 		MRtpList outgoingReliableCommands;
 		MRtpList outgoingRedundancyCommands;
 		MRtpList outgoingRedundancyNoAckCommands;
@@ -382,9 +383,7 @@ extern "C"
 	extern void mrtp_peer_reset_queues(MRtpPeer *);
 	extern void mrtp_peer_setup_outgoing_command(MRtpPeer *, MRtpOutgoingCommand *);
 	extern MRtpOutgoingCommand * mrtp_peer_queue_outgoing_command(MRtpPeer *, const MRtpProtocol *, MRtpPacket *, mrtp_uint32, mrtp_uint16);
-	extern MRtpIncomingCommand * mrtp_peer_queue_incoming_command(MRtpPeer *, const MRtpProtocol *, const void *, size_t, mrtp_uint32, mrtp_uint32, mrtp_uint16);
-	extern MRtpIncomingCommand * mrtp_peer_queue_retransmit_redundancy_command(MRtpPeer * peer, const MRtpProtocol * command,
-		const void * data, size_t dataLength, mrtp_uint32 flags, mrtp_uint32 fragmentCount, mrtp_uint16 sentTime);
+	extern MRtpIncomingCommand * mrtp_peer_queue_incoming_command(MRtpPeer *, const MRtpProtocol *, const void *, size_t, mrtp_uint32, mrtp_uint32);
 	extern MRtpAcknowledgement * mrtp_peer_queue_acknowledgement(MRtpPeer *, const MRtpProtocol *, mrtp_uint16);
 	extern void mrtp_peer_dispatch_incoming_reliable_commands(MRtpPeer *, MRtpChannel *);
 	extern void mrtp_peer_dispatch_incoming_redundancy_noack_commands(MRtpPeer*, MRtpChannel *);
@@ -395,7 +394,6 @@ extern "C"
 	extern void mrtp_peer_reset_reduandancy_buffer(MRtpPeer* peer, size_t redundancyNum);
 	extern MRtpAcknowledgement * mrtp_peer_queue_redundancy_acknowldegement(MRtpPeer* peer, const MRtpProtocol * command,
 		mrtp_uint16 sentTime);
-
 
 	extern size_t mrtp_protocol_command_size(mrtp_uint8);
 	extern void mrtp_protocol_remove_redundancy_buffer_commands(MRtpRedundancyNoAckBuffer* mrtpRedundancyBuffer);
