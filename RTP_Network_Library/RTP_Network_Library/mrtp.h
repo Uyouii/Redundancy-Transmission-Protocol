@@ -241,8 +241,9 @@ extern "C"
 		MRtpList redundancyAcknowledgemets;
 		MRtpList sentReliableCommands;
 		MRtpList sentRedundancyNoAckCommands;
-		MRtpList sentRedundancyCommands;			// already sent
-		MRtpList readytoDeleteRedundancyCommands;	// ready to delete
+		MRtpList sentRedundancyLastTimeCommands;			
+		MRtpList sentRedundancyThisTimeCommands;			
+		//MRtpList readytoDeleteRedundancyCommands;	// ready to delete
 		MRtpList retransmitRedundancyCommands;		// retransmit queue
 		MRtpList outgoingReliableCommands;
 		MRtpList outgoingRedundancyCommands;
@@ -254,10 +255,11 @@ extern "C"
 		size_t redundancyNum;
 		size_t currentRedundancyNoAckBufferNum;
 		MRtpRedundancyNoAckBuffer* redundancyNoAckBuffers;
-		size_t currentRedundancyBufferNum;
-		MRtpRedundancyBuffer* redundancyBuffers;
-		mrtp_uint32 lastReceiveRedundancyNumber;
+		//size_t currentRedundancyBufferNum;
+		//MRtpRedundancyBuffer* redundancyBuffers;
+		//mrtp_uint32 lastReceiveRedundancyNumber;
 		mrtp_uint16 quickRetransmitNum;
+		mrtp_uint32 redundancyLastSentTimeStamp;
 	} MRtpPeer;
 
 
@@ -300,6 +302,8 @@ extern "C"
 		size_t maximumWaitingData;          // the maximum aggregate amount of buffer space a peer may use waiting for packets to be delivered 
 		mrtp_uint8 redundancyNum;
 		mrtp_uint8 openQuickRetransmit;		// open the quick retransmit
+		mrtp_uint8 alreadyReceive;
+		mrtp_uint8 sendAfterReceive;
 	} MRtpHost;
 
 

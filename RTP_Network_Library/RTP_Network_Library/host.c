@@ -72,6 +72,8 @@ MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount,
 	host->redundancyNum = MRTP_PROTOCOL_DEFAULT_REDUNDANCY_NUM;
 	host->openQuickRetransmit = 0;
 
+	host->sendAfterReceive = TRUE;
+
 	mrtp_list_clear(&host->dispatchQueue);
 
 	//初始化peers数组的信息
@@ -90,9 +92,10 @@ MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount,
 		mrtp_list_clear(&currentPeer->dispatchedCommands);
 		mrtp_list_clear(&currentPeer->outgoingRedundancyCommands);
 		mrtp_list_clear(&currentPeer->outgoingRedundancyNoAckCommands);
-		mrtp_list_clear(&currentPeer->sentRedundancyCommands);
-		mrtp_list_clear(&currentPeer->readytoDeleteRedundancyCommands);
+		mrtp_list_clear(&currentPeer->sentRedundancyLastTimeCommands);
+		//mrtp_list_clear(&currentPeer->readytoDeleteRedundancyCommands);
 		mrtp_list_clear(&currentPeer->retransmitRedundancyCommands);
+		mrtp_list_clear(&currentPeer->sentRedundancyThisTimeCommands);
 
 		mrtp_peer_reset(currentPeer);
 	}
@@ -162,34 +165,34 @@ MRtpPeer *mrtp_host_connect(MRtpHost * host, const MRtpAddress * address) {
 	return currentPeer;
 }
 
-void mrtp_host_free_redundancy_buffers(MRtpHost* host) {
-
-	MRtpPeer* currentPeer;
-	for (currentPeer = host->peers; currentPeer < &host->peers[host->peerCount]; ++currentPeer) {
-		if (currentPeer->redundancyNoAckBuffers) {
-
-			for (int i = 0; i < currentPeer->redundancyNum; i++) {
-				mrtp_protocol_remove_redundancy_buffer_commands(&currentPeer->redundancyNoAckBuffers[i]);
-			}
-			mrtp_free(currentPeer->redundancyNoAckBuffers);
-
-			currentPeer->redundancyNoAckBuffers = NULL;
-			currentPeer->currentRedundancyNoAckBufferNum = 0;
-		}
-
-		if (currentPeer->redundancyBuffers) {
-
-			for (int i = 0; i < MRTP_PROTOCOL_MAXIMUM_REDUNDNACY_BUFFER_SIZE; i++) {
-				mrtp_protocol_remove_redundancy_buffer_commands(&currentPeer->redundancyBuffers[i]);
-			}
-			mrtp_free(currentPeer->redundancyBuffers);
-
-			currentPeer->redundancyBuffers = NULL;
-			currentPeer->currentRedundancyBufferNum = 0;
-		}
-	}
-
-}
+//void mrtp_host_free_redundancy_buffers(MRtpHost* host) {
+//
+//	MRtpPeer* currentPeer;
+//	for (currentPeer = host->peers; currentPeer < &host->peers[host->peerCount]; ++currentPeer) {
+//		if (currentPeer->redundancyNoAckBuffers) {
+//
+//			for (int i = 0; i < currentPeer->redundancyNum; i++) {
+//				mrtp_protocol_remove_redundancy_buffer_commands(&currentPeer->redundancyNoAckBuffers[i]);
+//			}
+//			mrtp_free(currentPeer->redundancyNoAckBuffers);
+//
+//			currentPeer->redundancyNoAckBuffers = NULL;
+//			currentPeer->currentRedundancyNoAckBufferNum = 0;
+//		}
+//
+//		if (currentPeer->redundancyBuffers) {
+//
+//			for (int i = 0; i < MRTP_PROTOCOL_MAXIMUM_REDUNDNACY_BUFFER_SIZE; i++) {
+//				mrtp_protocol_remove_redundancy_buffer_commands(&currentPeer->redundancyBuffers[i]);
+//			}
+//			mrtp_free(currentPeer->redundancyBuffers);
+//
+//			currentPeer->redundancyBuffers = NULL;
+//			currentPeer->currentRedundancyBufferNum = 0;
+//		}
+//	}
+//
+//}
 
 void mrtp_host_destroy(MRtpHost * host) {
 	MRtpPeer * currentPeer;
@@ -199,7 +202,7 @@ void mrtp_host_destroy(MRtpHost * host) {
 
 	mrtp_socket_destroy(host->socket);
 
-	mrtp_host_free_redundancy_buffers(host);
+	//mrtp_host_free_redundancy_buffers(host);
 
 	for (currentPeer = host->peers; currentPeer < &host->peers[host->peerCount]; ++currentPeer) {
 		mrtp_peer_reset(currentPeer);
