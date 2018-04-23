@@ -625,14 +625,16 @@ static int mrtp_protocol_send_redundancy_commands(MRtpHost * host, MRtpPeer * pe
 	size_t commandSize;
 	mrtp_uint8 channelID;
 
-
-	if (host->sendAfterReceive == FALSE || (!mrtp_list_empty(&peer->outgoingRedundancyCommands)) && 
+	// if hasn't resend the command after last receive
+	// or need to send new command and maybe already has received the ack, but the ack command has lost
+	if (host->sendAfterReceive == FALSE || (!mrtp_list_empty(&peer->outgoingRedundancyCommands) && 
 		(peer->redundancyLastSentTimeStamp == 0 || 
-			MRTP_TIME_DIFFERENCE(host->serviceTime, peer->redundancyLastSentTimeStamp) >= peer->lowestRoundTripTime)) 
+			MRTP_TIME_DIFFERENCE(host->serviceTime, peer->redundancyLastSentTimeStamp) >= peer->lowestRoundTripTime))) 
 	{
 		peer->redundancyLastSentTimeStamp = host->serviceTime;
 		currentCommand = mrtp_list_begin(&peer->sentRedundancyLastTimeCommands);
 		int a = mrtp_list_size(&peer->sentRedundancyLastTimeCommands);
+
 		while (currentCommand != mrtp_list_end(&peer->sentRedundancyLastTimeCommands)) {
 
 			outgoingCommand = (MRtpOutgoingCommand *)currentCommand;
@@ -782,92 +784,6 @@ static int mrtp_protocol_send_redundancy_commands(MRtpHost * host, MRtpPeer * pe
 
 	return 1;
 }
-
-//static int mrtp_protocol_retransmit_redundancy_commands(MRtpHost * host, MRtpPeer * peer) {
-//
-//	MRtpProtocol * command = &host->commands[host->commandCount];
-//	MRtpBuffer * buffer = &host->buffers[host->bufferCount];
-//	MRtpOutgoingCommand * outgoingCommand;
-//	MRtpListIterator currentCommand;
-//	MRtpChannel *channel;
-//	mrtp_uint16 commandWindow;
-//	size_t commandSize;
-//	mrtp_uint8 channelID;
-//
-//	currentCommand = mrtp_list_begin(&peer->retransmitRedundancyCommands);
-//
-//	while (currentCommand != mrtp_list_end(&peer->retransmitRedundancyCommands)) {
-//
-//		outgoingCommand = (MRtpOutgoingCommand *)currentCommand;
-//		// if the data in host buffer is full
-//		commandSize = commandSizes[outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK];
-//		if (command >= &host->commands[sizeof(host->commands) / sizeof(MRtpProtocol)] ||	//host的command满了
-//			buffer + 1 >= &host->buffers[sizeof(host->buffers) / sizeof(MRtpBuffer)] ||	//host的buffer满了
-//			peer->mtu - host->packetSize < commandSize ||	//commandSize的大小超过限制了
-//			(outgoingCommand->packet != NULL &&
-//			(mrtp_uint16)(peer->mtu - host->packetSize) < (mrtp_uint16)(commandSize + outgoingCommand->fragmentLength)))
-//		{
-//			host->continueSending = 1;
-//
-//			break;
-//		}
-//
-//		currentCommand = mrtp_list_next(currentCommand);
-//
-//		++outgoingCommand->sendAttempts;
-//
-//		// set the rtt for the outgoing command
-//		if (outgoingCommand->roundTripTimeout == 0) {
-//			outgoingCommand->roundTripTimeout = peer->roundTripTime + 4 * peer->roundTripTimeVariance;
-//			outgoingCommand->roundTripTimeoutLimit = peer->timeoutLimit * outgoingCommand->roundTripTimeout;
-//		}
-//
-//		// set the next redundancy timeout
-//		if (mrtp_list_empty(&peer->sentRedundancyCommands))
-//			peer->nextRedundancyTimeout = host->serviceTime + outgoingCommand->roundTripTimeout;
-//
-//		// move the command to the sent queue
-//		mrtp_list_insert(mrtp_list_end(&peer->sentRedundancyCommands), mrtp_list_remove(&outgoingCommand->outgoingCommandList));
-//
-//		outgoingCommand->sentTime = host->serviceTime;
-//
-//		buffer->data = command;
-//		buffer->dataLength = commandSize;
-//
-//		host->packetSize += buffer->dataLength;
-//		host->headerFlags |= MRTP_PROTOCOL_HEADER_FLAG_SENT_TIME;
-//
-//		*command = outgoingCommand->command;
-//
-//		// if there is a packet in the command, then add the packet to the command
-//		if (outgoingCommand->packet != NULL) {
-//			++buffer;
-//
-//			buffer->data = outgoingCommand->packet->data + outgoingCommand->fragmentOffset;
-//			buffer->dataLength = outgoingCommand->fragmentLength;
-//
-//			host->packetSize += outgoingCommand->fragmentLength;
-//		}
-//
-//#ifdef SENDANDRECEIVE
-//		printf("add retransmit redundancy buffer [%s]: (%d) at channel[%d] \n",
-//			commandName[outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK],
-//			MRTP_NET_TO_HOST_16(outgoingCommand->command.header.sequenceNumber),
-//			channelIDs[outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK]);
-//#endif // SENDANDRECEIVE
-//
-//		++peer->packetsSent;
-//
-//		++command;
-//		++buffer;
-//	}
-//
-//	host->commandCount = command - host->commands;
-//	host->bufferCount = buffer - host->buffers;
-//
-//	return 1;
-//}
-
 
 static int mrtp_protocol_send_outgoing_commands(MRtpHost * host, MRtpEvent * event, int checkForTimeouts) {
 
@@ -1297,44 +1213,6 @@ static int mrtp_protocol_handle_acknowledge(MRtpHost * host, MRtpEvent * event,
 		nextUnackSequenceNumber, channelID);
 
 }
-
-//static void mrtp_protocol_delete_redundancy_command(MRtpPeer * peer) {
-//
-//	MRtpListIterator currentCommand;
-//	MRtpOutgoingCommand * outgoingCommand = NULL;
-//	size_t currentRedundancyBufferNum = peer->currentRedundancyBufferNum;
-//	size_t tempCurrentRedundancyBufferNum;
-//
-//	if (mrtp_list_empty(&peer->readytoDeleteRedundancyCommands))
-//		return;
-//
-//	for (currentCommand = mrtp_list_begin(&peer->readytoDeleteRedundancyCommands);
-//		currentCommand != mrtp_list_end(&peer->readytoDeleteRedundancyCommands);)
-//	{
-//		outgoingCommand = (MRtpOutgoingCommand *)currentCommand;
-//		currentCommand = mrtp_list_next(currentCommand);
-//		tempCurrentRedundancyBufferNum = currentRedundancyBufferNum;
-//		if (tempCurrentRedundancyBufferNum < outgoingCommand->redundancyBufferNum) {
-//			tempCurrentRedundancyBufferNum += MRTP_PROTOCOL_MAXIMUM_REDUNDNACY_BUFFER_SIZE;
-//		}
-//		if (tempCurrentRedundancyBufferNum - outgoingCommand->redundancyBufferNum >= peer->redundancyNum) {
-//			mrtp_list_remove(&outgoingCommand->outgoingCommandList);
-//
-//			if (outgoingCommand->packet != NULL) {
-//
-//				--outgoingCommand->packet->referenceCount;
-//
-//				if (outgoingCommand->packet->referenceCount == 0) {
-//					outgoingCommand->packet->flags |= MRTP_PACKET_FLAG_SENT;
-//
-//					mrtp_packet_destroy(outgoingCommand->packet);
-//				}
-//			}
-//			mrtp_free(outgoingCommand);
-//		}
-//	}
-//
-//}
 
 static void mrtp_protocol_delete_command(MRtpOutgoingCommand* outgoingCommand) {
 
