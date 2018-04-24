@@ -159,16 +159,16 @@ extern "C"
 		MRTP_PEER_TIMEOUT_LIMIT = 32,
 		MRTP_PEER_TIMEOUT_MINIMUM = 5000,
 		MRTP_PEER_TIMEOUT_MAXIMUM = 30000,
-		MRTP_PEER_PING_INTERVAL = 1000,
-		MRTP_PEER_RELIABLE_WINDOWS = 16,
-		MRTP_PEER_RELIABLE_WINDOW_SIZE = 0x1000,
-		MRTP_PEER_FREE_RELIABLE_WINDOWS = 8
+		MRTP_PEER_PING_INTERVAL = 500,
+		MRTP_PEER_WINDOWS = 16,
+		MRTP_PEER_WINDOW_SIZE = 0x1000,
+		MRTP_PEER_FREE_WINDOWS = 8,
 	};
 
 	typedef struct _MRtpChannel {
 		mrtp_uint16 outgoingSequenceNumber;
-		mrtp_uint16 usedReliableWindows;
-		mrtp_uint16 commandWindows[MRTP_PEER_RELIABLE_WINDOWS];
+		mrtp_uint16 usedWindows;
+		mrtp_uint16 commandWindows[MRTP_PEER_WINDOWS];
 		mrtp_uint16 incomingSequenceNumber;
 		MRtpList incomingCommands;
 	} MRtpChannel;
@@ -249,6 +249,8 @@ extern "C"
 		MRtpList outgoingRedundancyCommands;
 		MRtpList outgoingRedundancyNoAckCommands;
 		MRtpList dispatchedCommands;
+		size_t sentRedundancyLastTimeSize;
+		size_t sentRedundancyThisTimeSize;
 		int needsDispatch;
 		mrtp_uint32 eventData;
 		size_t totalWaitingData;
@@ -260,6 +262,7 @@ extern "C"
 		//mrtp_uint32 lastReceiveRedundancyNumber;
 		mrtp_uint16 quickRetransmitNum;
 		mrtp_uint32 redundancyLastSentTimeStamp;
+		mrtp_uint8 sendRedundancyAfterReceive;
 	} MRtpPeer;
 
 
@@ -302,8 +305,6 @@ extern "C"
 		size_t maximumWaitingData;          // the maximum aggregate amount of buffer space a peer may use waiting for packets to be delivered 
 		mrtp_uint8 redundancyNum;
 		mrtp_uint8 openQuickRetransmit;		// open the quick retransmit
-		mrtp_uint8 alreadyReceive;
-		mrtp_uint8 sendAfterReceive;
 	} MRtpHost;
 
 

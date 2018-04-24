@@ -56,7 +56,7 @@ int main(int argc, char ** argv) {
 
 	bool disconnected = false;
 	bool hasconnected = false;
-	const int TOTALPACKET = 50;
+	const int TOTALPACKET = 100;
 	const int PACKELENGTH = 80;
 	mrtp_uint32 packetNum = 1;
 	mrtp_uint32 currentTime = (mrtp_uint32)timeGetTime();
@@ -72,6 +72,7 @@ int main(int argc, char ** argv) {
 		while (mrtp_host_service(client, &event, 0) >= 1) {
 
 			switch (event.type) {
+
 			case MRTP_EVENT_TYPE_CONNECT:
 				printf("connect to server %x:%u.\n", event.peer->address.host, event.peer->address.port);
 				hasconnected = true;

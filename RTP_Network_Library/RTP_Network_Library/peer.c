@@ -164,6 +164,10 @@ void mrtp_peer_reset(MRtpPeer * peer) {
 
 	peer->redundancyLastSentTimeStamp = 0;
 
+	peer->sendRedundancyAfterReceive = TRUE;
+	peer->sentRedundancyLastTimeSize = 0;
+	peer->sentRedundancyThisTimeSize = 0;
+
 	mrtp_peer_reset_queues(peer);
 }
 
@@ -246,13 +250,13 @@ MRtpAcknowledgement * mrtp_peer_queue_acknowledgement(MRtpPeer * peer, const MRt
 
 	if (channelID < peer->channelCount) {
 		MRtpChannel * channel = &peer->channels[channelID];
-		mrtp_uint16 reliableWindow = command->header.sequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE,
-			currentWindow = channel->incomingSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
+		mrtp_uint16 reliableWindow = command->header.sequenceNumber / MRTP_PEER_WINDOW_SIZE,
+			currentWindow = channel->incomingSequenceNumber / MRTP_PEER_WINDOW_SIZE;
 
 		if (command->header.sequenceNumber < channel->incomingSequenceNumber)
-			reliableWindow += MRTP_PEER_RELIABLE_WINDOWS;
+			reliableWindow += MRTP_PEER_WINDOWS;
 
-		if (reliableWindow >= currentWindow + MRTP_PEER_FREE_RELIABLE_WINDOWS - 1 && reliableWindow <= currentWindow + MRTP_PEER_FREE_RELIABLE_WINDOWS)
+		if (reliableWindow >= currentWindow + MRTP_PEER_FREE_WINDOWS - 1 && reliableWindow <= currentWindow + MRTP_PEER_FREE_WINDOWS)
 			return NULL;
 	}
 
@@ -276,7 +280,7 @@ MRtpAcknowledgement * mrtp_peer_queue_redundancy_acknowldegement(MRtpPeer* peer,
 	mrtp_uint16 nextRedundancyNumber = peer->channels[MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM].incomingSequenceNumber + 1;
 	mrtp_uint16 sequenceNumber = MRTP_NET_TO_HOST_16(command->header.sequenceNumber);
 	/*
-
+		
 	*/
 	if (sequenceNumber >= nextRedundancyNumber - 1) {
 		MRtpAcknowledgement * acknowledgement;
@@ -517,7 +521,7 @@ int mrtp_peer_send_redundancy(MRtpPeer* peer, MRtpPacket* packet) {
 	MRtpProtocol command;
 	size_t fragmentLength;
 
-	fragmentLength = peer->mtu - sizeof(MRtpProtocolSendRedundancyFragment);
+	fragmentLength = peer->mtu - sizeof(MRtpProtocolSendRedundancyFragment) - sizeof(MRtpProtocolHeader);
 
 	if (packet->dataLength > fragmentLength) {
 
@@ -801,13 +805,13 @@ MRtpIncomingCommand *mrtp_peer_queue_incoming_command(MRtpPeer * peer, const MRt
 		goto discardCommand;
 
 	sequenceNumber = command->header.sequenceNumber;
-	commandWindow = sequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
-	currentWindow = channel->incomingSequenceNumber / MRTP_PEER_RELIABLE_WINDOW_SIZE;
+	commandWindow = sequenceNumber / MRTP_PEER_WINDOW_SIZE;
+	currentWindow = channel->incomingSequenceNumber / MRTP_PEER_WINDOW_SIZE;
 
 	if (sequenceNumber < channel->incomingSequenceNumber)
-		commandWindow += MRTP_PEER_RELIABLE_WINDOWS;
+		commandWindow += MRTP_PEER_WINDOWS;
 
-	if (commandWindow < currentWindow || commandWindow >= currentWindow + MRTP_PEER_FREE_RELIABLE_WINDOWS - 1)
+	if (commandWindow < currentWindow || commandWindow >= currentWindow + MRTP_PEER_FREE_WINDOWS - 1)
 		goto discardCommand;
 
 	switch (command->header.command & MRTP_PROTOCOL_COMMAND_MASK)
