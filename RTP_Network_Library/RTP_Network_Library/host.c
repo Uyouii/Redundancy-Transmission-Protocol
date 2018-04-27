@@ -414,3 +414,14 @@ void mrtp_host_open_quick_retransmit(MRtpHost *host, mrtp_uint32 quickRetransmit
 		}
 	}
 }
+
+void mrtp_host_compress(MRtpHost * host, const MRtpCompressor * compressor) {
+
+	if (host->compressor.context != NULL && host->compressor.destroy)
+		(*host->compressor.destroy) (host->compressor.context);
+
+	if (compressor)
+		host->compressor = *compressor;
+	else
+		host->compressor.context = NULL;
+}

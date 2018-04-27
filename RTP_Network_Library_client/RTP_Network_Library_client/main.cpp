@@ -6,8 +6,8 @@
 #include<iostream>
 
 //#define SERVERADDRESS "10.240.66.57"
-//#define SERVERADDRESS "10.242.3.221"
-#define SERVERADDRESS "127.0.0.1"
+#define SERVERADDRESS "10.242.3.221"
+//#define SERVERADDRESS "127.0.0.1"
 
 MRtpHost* createClient() {
 	MRtpHost * client;
@@ -56,7 +56,7 @@ int main(int argc, char ** argv) {
 
 	bool disconnected = false;
 	bool hasconnected = false;
-	const int TOTALPACKET = 100;
+	const int TOTALPACKET = 1000;
 	const int PACKELENGTH = 80;
 	mrtp_uint32 packetNum = 1;
 	mrtp_uint32 currentTime = (mrtp_uint32)timeGetTime();
@@ -118,7 +118,7 @@ int main(int argc, char ** argv) {
 
 		Sleep(1);
 	}
-	
+	printf("totalData: %d totalPackets: %d\n", client->totalSentData, client->totalSentPackets);
 	atexit(mrtp_deinitialize);
 
 #ifdef _MSC_VER

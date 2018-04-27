@@ -146,7 +146,7 @@ extern "C"
 		MRTP_HOST_DEFAULT_MAXIMUM_PACKET_SIZE = 32 * 1024 * 1024,
 		MRTP_HOST_DEFAULT_MAXIMUM_WAITING_DATA = 32 * 1024 * 1024,
 
-		MRTP_PEER_DEFAULT_ROUND_TRIP_TIME = 150,
+		MRTP_PEER_DEFAULT_ROUND_TRIP_TIME = 200,
 		MRTP_PEER_DEFAULT_PACKET_THROTTLE = 32,
 		MRTP_PEER_PACKET_THROTTLE_SCALE = 32,
 		MRTP_PEER_PACKET_THROTTLE_COUNTER = 7,
@@ -243,7 +243,6 @@ extern "C"
 		MRtpList sentRedundancyNoAckCommands;
 		MRtpList sentRedundancyLastTimeCommands;			
 		MRtpList sentRedundancyThisTimeCommands;			
-		//MRtpList readytoDeleteRedundancyCommands;	// ready to delete
 		MRtpList retransmitRedundancyCommands;		// retransmit queue
 		MRtpList outgoingReliableCommands;
 		MRtpList outgoingRedundancyCommands;
@@ -257,13 +256,24 @@ extern "C"
 		size_t redundancyNum;
 		size_t currentRedundancyNoAckBufferNum;
 		MRtpRedundancyNoAckBuffer* redundancyNoAckBuffers;
-		//size_t currentRedundancyBufferNum;
-		//MRtpRedundancyBuffer* redundancyBuffers;
-		//mrtp_uint32 lastReceiveRedundancyNumber;
 		mrtp_uint16 quickRetransmitNum;
 		mrtp_uint32 redundancyLastSentTimeStamp;
 		mrtp_uint8 sendRedundancyAfterReceive;
 	} MRtpPeer;
+
+	/** An MRtp packet compressor for compressing UDP packets before socket sends or receives.
+	*/
+	typedef struct _MRtpCompressor
+	{
+		/** Context data for the compressor. Must be non-NULL. */
+		void * context;
+		/** Compresses from inBuffers[0:inBufferCount-1], containing inLimit bytes, to outData, outputting at most outLimit bytes. Should return 0 on failure. */
+		size_t(MRTP_CALLBACK * compress) (void * context, const MRtpBuffer * inBuffers, size_t inBufferCount, size_t inLimit, mrtp_uint8 * outData, size_t outLimit);
+		/** Decompresses from inData, containing inLimit bytes, to outData, outputting at most outLimit bytes. Should return 0 on failure. */
+		size_t(MRTP_CALLBACK * decompress) (void * context, const mrtp_uint8 * inData, size_t inLimit, mrtp_uint8 * outData, size_t outLimit);
+		/** Destroys the context when compression is disabled or the host is destroyed. May be NULL. */
+		void (MRTP_CALLBACK * destroy) (void * context);
+	} MRtpCompressor;
 
 
 	typedef mrtp_uint32(MRTP_CALLBACK * MRtpChecksumCallback) (const MRtpBuffer * buffers, size_t bufferCount);
@@ -299,12 +309,13 @@ extern "C"
 		mrtp_uint32 totalReceivedData;      // total data received, user should reset to 0 as needed to prevent overflow
 		mrtp_uint32 totalReceivedPackets;	// total UDP packets received, user should reset to 0 as needed to prevent overflow 
 		size_t connectedPeers;
-		size_t bandwidthLimitedPeers;
+		size_t bandwidthLimitedPeers;		// the number of peers which need bandwidth limit
 		size_t duplicatePeers;              // optional number of allowed peers from duplicate IPs, defaults to MRTP_PROTOCOL_MAXIMUM_PEER_ID 
 		size_t maximumPacketSize;           // the maximum allowable packet size that may be sent or received on a peer 
 		size_t maximumWaitingData;          // the maximum aggregate amount of buffer space a peer may use waiting for packets to be delivered 
 		mrtp_uint8 redundancyNum;
 		mrtp_uint8 openQuickRetransmit;		// open the quick retransmit
+		MRtpCompressor compressor;
 	} MRtpHost;
 
 
