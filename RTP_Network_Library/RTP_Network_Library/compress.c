@@ -210,13 +210,13 @@ size_t mrtp_range_coder_compress(void * context, const MRtpBuffer * inBuffers,
 
 	MRTP_CONTEXT_CREATE(root, MRTP_CONTEXT_ESCAPE_MINIMUM, MRTP_CONTEXT_SYMBOL_MINIMUM);
 
-	for (;;)
-	{
+	for (;;) {
+
 		MRtpSymbol * subcontext, *symbol;
 		mrtp_uint8 value;
 		mrtp_uint16 count, under, *parent = &predicted, total;
-		if (inData >= inEnd)
-		{
+		if (inData >= inEnd) {
+
 			if (inBufferCount <= 0)
 				break;
 			inData = (const mrtp_uint8 *)inBuffers->data;
@@ -235,12 +235,10 @@ size_t mrtp_range_coder_compress(void * context, const MRtpBuffer * inBuffers,
 			parent = &symbol->parent;
 			total = subcontext->total;
 
-			if (count > 0)
-			{
+			if (count > 0) {
 				MRTP_RANGE_CODER_ENCODE(subcontext->escapes + under, count, total);
 			}
-			else
-			{
+			else {
 				if (subcontext->escapes > 0 && subcontext->escapes < total)
 					MRTP_RANGE_CODER_ENCODE(0, subcontext->escapes, total);
 				subcontext->escapes += MRTP_SUBCONTEXT_ESCAPE_DELTA;
@@ -391,8 +389,8 @@ size_t mrtp_range_coder_decompress(void * context, const mrtp_uint8 * inData,
 
 	MRTP_RANGE_CODER_SEED;
 
-	for (;;)
-	{
+	for (;;) {
+
 		MRtpSymbol * subcontext, *symbol, *patch;
 		mrtp_uint8 value = 0;
 		mrtp_uint16 code, under, count, bottom, *parent = &predicted, total;
@@ -407,8 +405,7 @@ size_t mrtp_range_coder_decompress(void * context, const mrtp_uint8 * inData,
 			if (subcontext->escapes >= total)
 				continue;
 			code = MRTP_RANGE_CODER_READ(total);
-			if (code < subcontext->escapes)
-			{
+			if (code < subcontext->escapes) {
 				MRTP_RANGE_CODER_DECODE(0, subcontext->escapes, total);
 				continue;
 			}
@@ -427,8 +424,7 @@ size_t mrtp_range_coder_decompress(void * context, const mrtp_uint8 * inData,
 		total = root->total;
 
 		code = MRTP_RANGE_CODER_READ(total);
-		if (code < root->escapes)
-		{
+		if (code < root->escapes) {
 			MRTP_RANGE_CODER_DECODE(0, root->escapes, total);
 			break;
 		}
@@ -450,8 +446,7 @@ size_t mrtp_range_coder_decompress(void * context, const mrtp_uint8 * inData,
 			MRTP_CONTEXT_ENCODE(patch, symbol, value, under, count, MRTP_SUBCONTEXT_SYMBOL_DELTA, 0);
 			*parent = symbol - rangeCoder->symbols;
 			parent = &symbol->parent;
-			if (count <= 0)
-			{
+			if (count <= 0) {
 				patch->escapes += MRTP_SUBCONTEXT_ESCAPE_DELTA;
 				patch->total += MRTP_SUBCONTEXT_ESCAPE_DELTA;
 			}

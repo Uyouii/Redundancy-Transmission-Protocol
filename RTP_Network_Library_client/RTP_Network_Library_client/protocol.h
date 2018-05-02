@@ -15,7 +15,8 @@ enum {
 	MRTP_PROTOCOL_RELIABLE_CHANNEL_NUM = 0,
 	MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM = 1,
 	MRTP_PROTOCOL_REDUNDANCY_NOACK_CHANNEL_NUM = 2,
-	MRTP_PROTOCOL_CHANNEL_COUNT = 3,
+	MRTP_PROTOCOL_UNSEQUENCED_CHANNEL_NUM = 3,
+	MRTP_PROTOCOL_CHANNEL_COUNT = 4,
 	MRTP_PROTOCOL_DEFAULT_REDUNDANCY_NUM = 3,
 	MRTP_PROTOCOL_MAXIMUM_REDUNDANCY_NUM = 5,
 	MRTP_PROTOCOL_MINIMUM_REDUNDANCY_NUM = 2,
@@ -44,9 +45,10 @@ typedef enum _MRtpProtocolCommand {
 	MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_FRAGEMENT_NO_ACK = 11,
 	MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY = 12,
 	MRTP_PROTOCOL_COMMAND_SEND_REDUNDANCY_FRAGMENT = 13,
-	MRTP_PROTOCOL_COMMAND_SET_QUICK_RETRANSMIT = 14,
-	MRTP_PROTOCOL_COMMAND_REDUNDANCY_ACKNOWLEDGE = 15,
-	MRTP_PROTOCOL_COMMAND_COUNT = 16,
+	MRTP_PROTOCOL_COMMAND_REDUNDANCY_ACKNOWLEDGE = 14,
+	MRTP_PROTOCOL_COMMAND_SEND_UNSEQUENCED = 15,
+	MRTP_PROTOCOL_COMMAND_SEND_UNSEQUENCED_FRAGMENT = 16,
+	MRTP_PROTOCOL_COMMAND_COUNT = 17,
 
 	MRTP_PROTOCOL_COMMAND_MASK = 0x1F
 } MRtpProtocolCommand;
@@ -54,6 +56,7 @@ typedef enum _MRtpProtocolCommand {
 typedef enum _MRtpProtocolFlag {
 	MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE = (1 << 7),
 	MRTP_PROTOCOL_COMMAND_FLAG_REDUNDANCY_ACKNOWLEDGE = (1 << 6),
+	MRTP_PROTOCOL_COMMAND_FLAG_UNSEQUENCED = (1 << 5),
 
 	MRTP_PROTOCOL_HEADER_SESSION_MASK = (3 << 12),
 	MRTP_PROTOCOL_HEADER_SESSION_SHIFT = 12,
@@ -192,17 +195,29 @@ typedef struct _MRtpProtocolSendRedundancyFragementNoAck {
 	mrtp_uint32 fragmentOffset;
 } MRTP_PACKED MRtpProtocolSendRedundancyFragementNoAck;
 
-typedef struct _MRtpProtocolSetQuickRetransmit {
-	MRtpProtocolCommandHeader header;
-	mrtp_uint16 quickRetransmit;
-} MRTP_PACKED MRtpProtocolSetQuickRetransmit;
-
 typedef struct _MRtpProtocolRedundancyAcknowledge {
 	MRtpProtocolCommandHeader header;
 	mrtp_uint16 receivedSequenceNumber;
 	mrtp_uint16 receivedSentTime;
 	mrtp_uint16 nextUnackSequenceNumber;	//the packet before this seq number has already received
 } MRTP_PACKED MRtpProtocolRedundancyAcknowledge;
+
+typedef struct _MRtpProtocolSendUnsequenced
+{
+	MRtpProtocolCommandHeader header;
+	mrtp_uint16 unsequencedGroup;
+	mrtp_uint16 dataLength;
+} MRTP_PACKED MRtpProtocolSendUnsequenced;
+
+typedef struct _MRtpProtocolSendUnsequencedFragment {
+	MRtpProtocolCommandHeader header;
+	mrtp_uint16 startSequenceNumber;
+	mrtp_uint16 dataLength;
+	mrtp_uint32 fragmentCount;
+	mrtp_uint32 fragmentNumber;
+	mrtp_uint32 totalLength;
+	mrtp_uint32 fragmentOffset;
+} MRTP_PACKED MRtpProtocolSendUnsequencedFragment;
 
 typedef union _MRtpProtocol {
 	MRtpProtocolCommandHeader header;
@@ -219,8 +234,9 @@ typedef union _MRtpProtocol {
 	MRtpProtocolSendRedundancyFragementNoAck sendRedundancyFragementNoAck;
 	MRtpProtocolSendRedundancy sendRedundancy;
 	MRtpProtocolSendRedundancyFragment sendRedundancyFragment;
-	MRtpProtocolSetQuickRetransmit setQuickRestrnsmit;
 	MRtpProtocolRedundancyAcknowledge redundancyAcknowledge;
+	MRtpProtocolSendUnsequenced sendUnsequenced;
+	MRtpProtocolSendUnsequencedFragment sendUnsequencedFragment;
 } MRTP_PACKED MRtpProtocol;
 
 #ifdef _MSC_VER

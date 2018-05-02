@@ -2,11 +2,11 @@
 #define _MRTP_H_
 
 // for debug
-//#define SENDANDRECEIVE
+#define SENDANDRECEIVE
 //#define FLOWCONTROLDEBUG
 //#define RELIABLEWINDOWDEBUG
 #define PACKETLOSSDEBUG
-#define SETPACKETLOSS 20
+//#define SETPACKETLOSS 10
 
 #ifdef __cplusplus
 extern "C"
@@ -71,6 +71,7 @@ extern "C"
 		MRTP_PACKET_FLAG_NO_ALLOCATE = (1 << 2),
 		MRTP_PACKET_FLAG_REDUNDANCY = (1 << 3),
 		MRTP_PACKET_FLAG_REDUNDANCY_NO_ACK = (1 << 4),
+		MRTP_PACKET_FLAG_UNSEQUENCED = (1 << 5),
 
 
 		MRTP_PACKET_FLAG_SENT = (1 << 8)
@@ -163,6 +164,9 @@ extern "C"
 		MRTP_PEER_WINDOWS = 16,
 		MRTP_PEER_WINDOW_SIZE = 0x1000,
 		MRTP_PEER_FREE_WINDOWS = 8,
+		MRTP_PEER_UNSEQUENCED_WINDOWS = 64,
+		MRTP_PEER_UNSEQUENCED_WINDOW_SIZE = 1024,
+		MRTP_PEER_FREE_UNSEQUENCED_WINDOWS = 32,
 	};
 
 	typedef struct _MRtpChannel {
@@ -243,10 +247,11 @@ extern "C"
 		MRtpList sentRedundancyNoAckCommands;
 		MRtpList sentRedundancyLastTimeCommands;
 		MRtpList sentRedundancyThisTimeCommands;
-		MRtpList retransmitRedundancyCommands;		// retransmit queue
 		MRtpList outgoingReliableCommands;
 		MRtpList outgoingRedundancyCommands;
 		MRtpList outgoingRedundancyNoAckCommands;
+		MRtpList outgoingUnsequencedCommands;
+		MRtpList sentUnsequencedCommands;
 		MRtpList dispatchedCommands;
 		size_t sentRedundancyLastTimeSize;
 		size_t sentRedundancyThisTimeSize;
@@ -259,6 +264,9 @@ extern "C"
 		mrtp_uint16 quickRetransmitNum;
 		mrtp_uint32 redundancyLastSentTimeStamp;
 		mrtp_uint8 sendRedundancyAfterReceive;
+		mrtp_uint16   incomingUnsequencedGroup;
+		mrtp_uint16   outgoingUnsequencedGroup;
+		mrtp_uint32   unsequencedWindow[MRTP_PEER_UNSEQUENCED_WINDOW_SIZE / 32];
 	} MRtpPeer;
 
 	/** An MRtp packet compressor for compressing UDP packets before socket sends or receives.
@@ -394,7 +402,6 @@ extern "C"
 	MRTP_API void mrtp_peer_disconnect_now(MRtpPeer *, mrtp_uint32);
 	MRTP_API void  mrtp_peer_disconnect_later(MRtpPeer *, mrtp_uint32);
 	MRTP_API void mrtp_peer_throttle_configure(MRtpPeer *, mrtp_uint32, mrtp_uint32, mrtp_uint32);
-	MRTP_API void mrtp_peer_quick_restransmit_configure(MRtpPeer * peer, mrtp_uint16 quickRetransmit);
 	extern int mrtp_peer_throttle(MRtpPeer *, mrtp_uint32);
 	extern void mrtp_peer_reset_queues(MRtpPeer *);
 	extern void mrtp_peer_setup_outgoing_command(MRtpPeer *, MRtpOutgoingCommand *);
@@ -407,7 +414,6 @@ extern "C"
 	extern void mrtp_peer_on_connect(MRtpPeer *);
 	extern void mrtp_peer_on_disconnect(MRtpPeer *);
 	extern void mrtp_peer_reset_redundancy_noack_buffer(MRtpPeer* peer, size_t redundancyNum);
-	extern void mrtp_peer_reset_reduandancy_buffer(MRtpPeer* peer, size_t redundancyNum);
 	extern MRtpAcknowledgement * mrtp_peer_queue_redundancy_acknowldegement(MRtpPeer* peer, const MRtpProtocol * command,
 		mrtp_uint16 sentTime);
 
