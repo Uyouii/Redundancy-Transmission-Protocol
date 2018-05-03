@@ -411,6 +411,7 @@ extern "C"
 	extern void mrtp_peer_dispatch_incoming_reliable_commands(MRtpPeer *, MRtpChannel *);
 	extern void mrtp_peer_dispatch_incoming_redundancy_noack_commands(MRtpPeer*, MRtpChannel *);
 	extern void mrtp_peer_dispatch_incoming_redundancy_commands(MRtpPeer * peer, MRtpChannel * channel);
+	extern void mrtp_peer_dispatch_incoming_unsequenced_commands(MRtpPeer * peer, MRtpChannel * channel);
 	extern void mrtp_peer_on_connect(MRtpPeer *);
 	extern void mrtp_peer_on_disconnect(MRtpPeer *);
 	extern void mrtp_peer_reset_redundancy_noack_buffer(MRtpPeer* peer, size_t redundancyNum);

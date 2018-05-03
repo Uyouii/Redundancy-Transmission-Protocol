@@ -58,7 +58,7 @@ int main(int argc, char ** argv) {
 	bool disconnected = false;
 	bool hasconnected = false;
 	const int TOTALPACKET = 50;
-	const int PACKELENGTH = 80;
+	const int PACKELENGTH = 2000;
 	mrtp_uint32 packetNum = 1;
 	mrtp_uint32 currentTime = (mrtp_uint32)timeGetTime();
 	mrtp_uint32 slap = currentTime + 30;

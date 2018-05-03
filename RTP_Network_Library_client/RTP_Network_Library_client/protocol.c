@@ -927,7 +927,7 @@ static int mrtp_protocol_send_unsequenced_commands(MRtpHost * host, MRtpPeer * p
 #ifdef SENDANDRECEIVE
 		printf("add buffer [%s]: (%d) at channel[%d] ",
 			commandName[outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK],
-			MRTP_NET_TO_HOST_16(outgoingCommand->command.header.sequenceNumber),
+			MRTP_NET_TO_HOST_16(outgoingCommand->command.sendUnsequenced.unsequencedGroup),
 			channelIDs[outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK]);
 		printf("\n");
 #endif // SENDANDRECEIVE
@@ -2293,6 +2293,109 @@ static int mrtp_protocol_handle_send_unsequenced(MRtpHost * host, MRtpPeer * pee
 
 }
 
+static int mrtp_protocol_handle_send_unsequenced_fragment(MRtpHost * host, MRtpPeer * peer,
+	const MRtpProtocol * command, mrtp_uint8 ** currentData)
+{
+	mrtp_uint32 fragmentNumber, fragmentCount, fragmentOffset, fragmentLength;
+	mrtp_uint32 sequenceNumber, startSequenceNumber;
+	mrtp_uint32 totalLength;
+	mrtp_uint16 startWindow, currentWindow;
+	MRtpChannel * channel;
+	MRtpListIterator currentCommand;
+	MRtpIncomingCommand * startCommand = NULL;
+
+	fragmentLength = MRTP_NET_TO_HOST_16(command->sendUnsequencedFragment.dataLength);
+
+	*currentData += fragmentLength;
+	if (fragmentLength > host->maximumPacketSize || *currentData < host->receivedData ||
+		*currentData > & host->receivedData[host->receivedDataLength])
+		return -1;
+
+	mrtp_uint8 channelID = channelIDs[command->header.command & MRTP_PROTOCOL_COMMAND_MASK];
+	channel = &peer->channels[channelID];
+	sequenceNumber = command->header.sequenceNumber;
+	startSequenceNumber = MRTP_NET_TO_HOST_16(command->sendUnsequencedFragment.startSequenceNumber);
+	startWindow = startSequenceNumber / MRTP_PEER_WINDOW_SIZE;
+
+	currentWindow = channel->incomingSequenceNumber / MRTP_PEER_WINDOW_SIZE;
+	if (startSequenceNumber < channel->incomingSequenceNumber)
+		startWindow += MRTP_PEER_WINDOWS;
+	if (startWindow < currentWindow || startWindow >= currentWindow + MRTP_PEER_FREE_WINDOWS - 1)
+		return 0;
+
+	fragmentNumber = MRTP_NET_TO_HOST_32(command->sendUnsequencedFragment.fragmentNumber);
+	fragmentCount = MRTP_NET_TO_HOST_32(command->sendUnsequencedFragment.fragmentCount);
+	fragmentOffset = MRTP_NET_TO_HOST_32(command->sendUnsequencedFragment.fragmentOffset);
+	totalLength = MRTP_NET_TO_HOST_32(command->sendUnsequencedFragment.totalLength);
+
+	if (fragmentCount > MRTP_PROTOCOL_MAXIMUM_FRAGMENT_COUNT || fragmentNumber >= fragmentCount ||
+		totalLength > host->maximumPacketSize || fragmentOffset >= totalLength ||
+		fragmentLength > totalLength - fragmentOffset)
+	{
+		return -1;
+	}
+
+	for (currentCommand = mrtp_list_previous(mrtp_list_end(&channel->incomingCommands));
+		currentCommand != mrtp_list_end(&channel->incomingCommands);
+		currentCommand = mrtp_list_previous(currentCommand))
+	{
+		MRtpIncomingCommand * incomingCommand = (MRtpIncomingCommand *)currentCommand;
+
+		if (startSequenceNumber >= channel->incomingSequenceNumber) {
+			if (incomingCommand->sequenceNumber < channel->incomingSequenceNumber)
+				continue;
+		}
+		else if (incomingCommand->sequenceNumber >= channel->incomingSequenceNumber)
+			break;
+
+		if (incomingCommand->sequenceNumber <= startSequenceNumber) {
+
+			if (incomingCommand->sequenceNumber < startSequenceNumber)
+				break;
+
+			if ((incomingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK) != MRTP_PROTOCOL_COMMAND_SEND_UNSEQUENCED_FRAGMENT ||
+				totalLength != incomingCommand->packet->dataLength ||
+				fragmentCount != incomingCommand->fragmentCount)
+				return -1;
+
+			startCommand = incomingCommand;
+			break;
+		}
+	}
+
+	if (startCommand == NULL) {
+
+		MRtpProtocol hostCommand = *command;
+		hostCommand.header.sequenceNumber = startSequenceNumber;
+
+		startCommand = mrtp_peer_queue_incoming_command(peer, &hostCommand, NULL, totalLength,
+			MRTP_PACKET_FLAG_UNSEQUENCED, fragmentCount);
+
+		// maybe the startCommand has already been dispatched
+		if (startCommand == NULL)
+			return 0;
+	}
+
+	if ((startCommand->fragments[fragmentNumber / 32] & (1 << (fragmentNumber % 32))) == 0) {
+
+		--startCommand->fragmentsRemaining;
+
+		startCommand->fragments[fragmentNumber / 32] |= (1 << (fragmentNumber % 32));
+
+		if (fragmentOffset + fragmentLength > startCommand->packet->dataLength)
+			fragmentLength = startCommand->packet->dataLength - fragmentOffset;
+
+		memcpy(startCommand->packet->data + fragmentOffset,
+			(mrtp_uint8 *)command + sizeof(MRtpProtocolSendUnsequencedFragment),
+			fragmentLength);
+
+		if (startCommand->fragmentsRemaining <= 0)
+			mrtp_peer_dispatch_incoming_unsequenced_commands(peer, channel);
+	}
+
+	return 0;
+}
+
 static int mrtp_protocol_handle_incoming_commands(MRtpHost * host, MRtpEvent * event) {
 	MRtpProtocolHeader * header;
 	MRtpProtocol * command;
@@ -2454,6 +2557,11 @@ static int mrtp_protocol_handle_incoming_commands(MRtpHost * host, MRtpEvent * e
 
 		case MRTP_PROTOCOL_COMMAND_SEND_UNSEQUENCED:
 			if (mrtp_protocol_handle_send_unsequenced(host, peer, command, &currentData))
+				goto commandError;
+			break;
+
+		case MRTP_PROTOCOL_COMMAND_SEND_UNSEQUENCED_FRAGMENT:
+			if (mrtp_protocol_handle_send_unsequenced_fragment(host, peer, command, &currentData))
 				goto commandError;
 			break;
 

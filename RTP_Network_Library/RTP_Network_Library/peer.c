@@ -206,9 +206,15 @@ void mrtp_peer_setup_outgoing_command(MRtpPeer * peer, MRtpOutgoingCommand * out
 		outgoingCommand->sequenceNumber = peer->outgoingReliableSequenceNumber;
 	}
 	else if (outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_FLAG_UNSEQUENCED) {
-		++peer->outgoingUnsequencedGroup;
+		if ((outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK) == MRTP_PROTOCOL_COMMAND_SEND_UNSEQUENCED_FRAGMENT) {
+			++channel->outgoingSequenceNumber;
+			outgoingCommand->sequenceNumber = channel->outgoingSequenceNumber;
+		}
+		else {
+			++peer->outgoingUnsequencedGroup;
+			outgoingCommand->sequenceNumber = 0;
+		}
 
-		outgoingCommand->sequenceNumber = 0;
 	} 
 	else {
 		++channel->outgoingSequenceNumber;
@@ -675,6 +681,62 @@ int mrtp_peer_send_unsequenced(MRtpPeer * peer, MRtpPacket * packet) {
 
 	if (packet->dataLength > fragmentLength) {
 
+		mrtp_uint32 fragmentCount = (packet->dataLength + fragmentLength - 1) / fragmentLength,
+			fragmentNumber,
+			fragmentOffset;
+		mrtp_uint8 commandNumber;
+		mrtp_uint16 startSequenceNumber;
+		MRtpList fragments;
+		MRtpOutgoingCommand * fragment;
+
+		if (fragmentCount > MRTP_PROTOCOL_MAXIMUM_FRAGMENT_COUNT)
+			return -1;
+
+		commandNumber = MRTP_PROTOCOL_COMMAND_SEND_UNSEQUENCED_FRAGMENT | MRTP_PROTOCOL_COMMAND_FLAG_UNSEQUENCED;
+		startSequenceNumber = channel->outgoingSequenceNumber + 1;
+
+		mrtp_list_clear(&fragments);
+
+		for (fragmentNumber = 0, fragmentOffset = 0; fragmentOffset < packet->dataLength;
+			++fragmentNumber, fragmentOffset += fragmentLength)
+		{
+			if (packet->dataLength - fragmentOffset < fragmentLength)
+				fragmentLength = packet->dataLength - fragmentOffset;
+
+			fragment = (MRtpOutgoingCommand *)mrtp_malloc(sizeof(MRtpOutgoingCommand));
+			if (fragment == NULL) {
+
+				while (!mrtp_list_empty(&fragments)) {
+
+					fragment = (MRtpOutgoingCommand *)mrtp_list_remove(mrtp_list_begin(&fragments));
+					mrtp_free(fragment);
+				}
+
+				return -1;
+			}
+
+			fragment->fragmentOffset = fragmentOffset;
+			fragment->fragmentLength = fragmentLength;
+			fragment->packet = packet;
+			fragment->command.header.command = commandNumber;
+			fragment->command.sendUnsequencedFragment.startSequenceNumber = MRTP_HOST_TO_NET_16(startSequenceNumber);
+			fragment->command.sendUnsequencedFragment.dataLength = MRTP_HOST_TO_NET_16(fragmentLength);
+			fragment->command.sendUnsequencedFragment.fragmentCount = MRTP_HOST_TO_NET_32(fragmentCount);
+			fragment->command.sendUnsequencedFragment.fragmentNumber = MRTP_HOST_TO_NET_32(fragmentNumber);
+			fragment->command.sendUnsequencedFragment.totalLength = MRTP_HOST_TO_NET_32(packet->dataLength);
+			fragment->command.sendUnsequencedFragment.fragmentOffset = MRTP_NET_TO_HOST_32(fragmentOffset);
+
+			mrtp_list_insert(mrtp_list_end(&fragments), fragment);
+		}
+
+		packet->referenceCount += fragmentNumber;
+
+		while (!mrtp_list_empty(&fragments)) {
+			fragment = (MRtpOutgoingCommand *)mrtp_list_remove(mrtp_list_begin(&fragments));
+
+			mrtp_peer_setup_outgoing_command(peer, fragment);
+		}
+
 	}
 	else {
 
@@ -689,6 +751,7 @@ int mrtp_peer_send_unsequenced(MRtpPeer * peer, MRtpPacket * packet) {
 }
 
 int mrtp_peer_send(MRtpPeer *peer, MRtpPacket *packet) {
+
 	if (peer->state != MRTP_PEER_STATE_CONNECTED || packet->dataLength > peer->host->maximumPacketSize)
 		return -1;
 
@@ -940,6 +1003,7 @@ MRtpIncomingCommand *mrtp_peer_queue_incoming_command(MRtpPeer * peer, const MRt
 		break;
 	
 	case MRTP_PROTOCOL_COMMAND_SEND_UNSEQUENCED:
+	case MRTP_PROTOCOL_COMMAND_SEND_UNSEQUENCED_FRAGMENT:
 		currentCommand = mrtp_list_end(&channel->incomingCommands);
 		break;
 
@@ -1004,6 +1068,7 @@ MRtpIncomingCommand *mrtp_peer_queue_incoming_command(MRtpPeer * peer, const MRt
 		break;
 
 	case MRTP_PROTOCOL_COMMAND_SEND_UNSEQUENCED:
+	case MRTP_PROTOCOL_COMMAND_SEND_UNSEQUENCED_FRAGMENT:
 		mrtp_peer_dispatch_incoming_unsequenced_commands(peer, channel);
 		break;
 
@@ -1068,7 +1133,6 @@ void mrtp_peer_reset_redundancy_noack_buffer(MRtpPeer* peer, size_t redundancyNu
 		peer->currentRedundancyNoAckBufferNum = 0;
 	}
 }
-
 
 void mrtp_peer_throttle_configure(MRtpPeer * peer, mrtp_uint32 interval, mrtp_uint32 acceleration,
 	mrtp_uint32 deceleration)
