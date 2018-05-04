@@ -654,10 +654,10 @@ static int mrtp_protocol_send_redundancy_commands(MRtpHost * host, MRtpPeer * pe
 
 	// if hasn't resend the command after last receive
 	// or need to send new command and maybe already has received the ack, but the ack command has lost
-	if (peer->sendRedundancyAfterReceive == FALSE ||
+	if (!mrtp_list_empty(&peer->sentRedundancyLastTimeCommands) && (peer->sendRedundancyAfterReceive == FALSE ||
 		(!mrtp_list_empty(&peer->outgoingRedundancyCommands) && (peer->redundancyLastSentTimeStamp == 0 ||
 			MRTP_TIME_DIFFERENCE(host->serviceTime, peer->redundancyLastSentTimeStamp) >=
-			peer->lowestRoundTripTime + 2 * peer->roundTripTimeVariance)))
+			peer->lowestRoundTripTime/*+ 2 * peer->roundTripTimeVariance*/))))
 	{
 		currentCommand = mrtp_list_begin(&peer->sentRedundancyLastTimeCommands);
 
@@ -704,9 +704,6 @@ static int mrtp_protocol_send_redundancy_commands(MRtpHost * host, MRtpPeer * pe
 				outgoingCommand->roundTripTimeoutLimit = peer->timeoutLimit * outgoingCommand->roundTripTimeout;
 			}
 
-			if (mrtp_list_empty(&peer->sentRedundancyThisTimeCommands))
-				peer->nextRedundancyTimeout = host->serviceTime + outgoingCommand->roundTripTimeout;
-
 			mrtp_list_insert(mrtp_list_end(&peer->sentRedundancyThisTimeCommands), mrtp_list_remove(&outgoingCommand->outgoingCommandList));
 			--peer->sentRedundancyLastTimeSize;
 			++peer->sentRedundancyThisTimeSize;
@@ -743,6 +740,12 @@ static int mrtp_protocol_send_redundancy_commands(MRtpHost * host, MRtpPeer * pe
 			++command;
 			++buffer;
 		}
+
+		if (mrtp_list_empty(&peer->sentRedundancyLastTimeCommands)) {
+			outgoingCommand = (MRtpOutgoingCommand *)mrtp_list_begin(&peer->sentRedundancyLastTimeCommands);
+			peer->nextRedundancyTimeout = host->serviceTime + outgoingCommand->roundTripTimeout;
+		}
+
 		if (host->continueSending == 0) {
 			peer->redundancyLastSentTimeStamp = host->serviceTime;
 		}
@@ -1029,13 +1032,10 @@ static int mrtp_protocol_send_outgoing_commands(MRtpHost * host, MRtpEvent * eve
 			MRtpRedundancyNoAckBuffer* currentRedundancyNoackBuffer =
 				&currentPeer->redundancyNoAckBuffers[currentPeer->currentRedundancyNoAckBufferNum];
 
-			/*MRtpRedundancyBuffer* currentRedundancyBuffer =
-			&currentPeer->redundancyBuffers[currentPeer->currentRedundancyBufferNum];*/
 
 			// there are some data need to send
 			if (host->bufferCount > 1 ||
-				(currentRedundancyNoackBuffer && currentRedundancyNoackBuffer->buffercount > 0) /*||
-																								(currentRedundancyBuffer && currentRedundancyBuffer->buffercount > 0)*/)
+				(currentRedundancyNoackBuffer && currentRedundancyNoackBuffer->buffercount > 0))
 			{
 				if (currentPeer->packetLossEpoch == 0)
 					currentPeer->packetLossEpoch = host->serviceTime;

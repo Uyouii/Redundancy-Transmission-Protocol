@@ -4,6 +4,7 @@
 #include<cstring>
 #include<string>
 #include<iostream>
+#include<fstream>
 
 //#define SERVERADDRESS "10.240.66.57"
 #define SERVERADDRESS "10.242.3.221"
@@ -57,8 +58,8 @@ int main(int argc, char ** argv) {
 
 	bool disconnected = false;
 	bool hasconnected = false;
-	const int TOTALPACKET = 50;
-	const int PACKELENGTH = 2000;
+	const int TOTALPACKET = 200;
+	const int PACKELENGTH = 80;
 	mrtp_uint32 packetNum = 1;
 	mrtp_uint32 currentTime = (mrtp_uint32)timeGetTime();
 	mrtp_uint32 slap = currentTime + 30;
@@ -66,6 +67,7 @@ int main(int argc, char ** argv) {
 	mrtp_uint8 * buffer = (mrtp_uint8 *)malloc(PACKELENGTH);
 	memset(buffer, 'a', PACKELENGTH);
 
+	std::ofstream out_file("mrtp.csv");
 	while (true) {
 
 		currentTime = (mrtp_uint32)timeGetTime();
@@ -89,6 +91,7 @@ int main(int argc, char ** argv) {
 				mrtp_uint32 rtt = currentTime - sendTimeStamp;
 				printf("Receive a Pakcet of length: %d. Sequence Number: %d, TimeStamp: %d rtt: %dms\n",
 					event.packet->dataLength, seqNumber, sendTimeStamp, rtt);
+				out_file << seqNumber << ", " << rtt << std::endl;
 				totalRTT += rtt;
 				if (rtt > maxRTT)
 					maxRTT = rtt;
@@ -113,13 +116,15 @@ int main(int argc, char ** argv) {
 			((mrtp_uint32*)buffer)[1] = currentTime;
 			slap += 30;
 			packetNum++;
-			MRtpPacket * packet = mrtp_packet_create(buffer, PACKELENGTH, MRTP_PACKET_FLAG_UNSEQUENCED);
+			MRtpPacket * packet = mrtp_packet_create(buffer, PACKELENGTH, MRTP_PACKET_FLAG_REDUNDANCY);
 			mrtp_peer_send(peer, packet);
 		}
 
 		Sleep(1);
 	}
 	printf("totalData: %d totalPackets: %d\n", client->totalSentData, client->totalSentPackets);
+
+	out_file.close();
 	atexit(mrtp_deinitialize);
 
 #ifdef _MSC_VER

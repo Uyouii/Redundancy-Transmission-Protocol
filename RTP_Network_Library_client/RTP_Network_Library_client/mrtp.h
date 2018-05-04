@@ -6,7 +6,7 @@
 //#define FLOWCONTROLDEBUG
 //#define RELIABLEWINDOWDEBUG
 #define PACKETLOSSDEBUG
-//#define SETPACKETLOSS 10
+#define SETPACKETLOSS 10
 
 #ifdef __cplusplus
 extern "C"
