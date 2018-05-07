@@ -2,7 +2,7 @@
 #define _MRTP_H_
 
 // for debug
-#define SENDANDRECEIVE
+//#define SENDANDRECEIVE
 //#define FLOWCONTROLDEBUG
 //#define RELIABLEWINDOWDEBUG
 #define PACKETLOSSDEBUG
@@ -215,11 +215,6 @@ extern "C"
 		mrtp_uint32 nextTimeout;
 		mrtp_uint32 nextRedundancyTimeout;
 		mrtp_uint32 earliestTimeout;
-		mrtp_uint32 packetLossEpoch;
-		mrtp_uint32 packetsSent;
-		mrtp_uint32 packetsLost;
-		mrtp_uint32 packetLoss;          // mean packet loss of reliable packets as a ratio with respect to the constant MRTP_PEER_PACKET_LOSS_SCALE 
-		mrtp_uint32 packetLossVariance;
 		mrtp_uint32 packetThrottle;
 		mrtp_uint32 packetThrottleLimit;
 		mrtp_uint32 packetThrottleCounter;
@@ -398,9 +393,9 @@ extern "C"
 	MRTP_API void mrtp_peer_ping_interval(MRtpPeer *, mrtp_uint32);
 	MRTP_API void mrtp_peer_timeout(MRtpPeer *, mrtp_uint32, mrtp_uint32, mrtp_uint32);
 	MRTP_API void mrtp_peer_reset(MRtpPeer *);
-	MRTP_API void mrtp_peer_disconnect(MRtpPeer *, mrtp_uint32);
-	MRTP_API void mrtp_peer_disconnect_now(MRtpPeer *, mrtp_uint32);
-	MRTP_API void  mrtp_peer_disconnect_later(MRtpPeer *, mrtp_uint32);
+	MRTP_API void mrtp_peer_disconnect(MRtpPeer *);
+	MRTP_API void mrtp_peer_disconnect_now(MRtpPeer *);
+	MRTP_API void  mrtp_peer_disconnect_later(MRtpPeer *);
 	MRTP_API void mrtp_peer_throttle_configure(MRtpPeer *, mrtp_uint32, mrtp_uint32, mrtp_uint32);
 	extern int mrtp_peer_throttle(MRtpPeer *, mrtp_uint32);
 	extern void mrtp_peer_reset_queues(MRtpPeer *);

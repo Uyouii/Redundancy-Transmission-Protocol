@@ -110,7 +110,6 @@ typedef struct _MRtpProtocolConnect {
 	mrtp_uint32 packetThrottleAcceleration;
 	mrtp_uint32 packetThrottleDeceleration;
 	mrtp_uint32 connectID;
-	mrtp_uint32 data;
 } MRTP_PACKED MRtpProtocolConnect;
 
 typedef struct _MRtpProtocolVerifyConnect {
@@ -143,7 +142,6 @@ typedef struct _MRtpProtocolThrottleConfigure {
 
 typedef struct _MRtpProtocolDisconnect {
 	MRtpProtocolCommandHeader header;
-	mrtp_uint32 data;
 } MRTP_PACKED MRtpProtocolDisconnect;
 
 typedef struct _MRtpProtocolPing {

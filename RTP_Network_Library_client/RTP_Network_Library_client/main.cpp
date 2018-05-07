@@ -58,7 +58,7 @@ int main(int argc, char ** argv) {
 
 	bool disconnected = false;
 	bool hasconnected = false;
-	const int TOTALPACKET = 200;
+	const int TOTALPACKET = 1000;
 	const int PACKELENGTH = 80;
 	mrtp_uint32 packetNum = 1;
 	mrtp_uint32 currentTime = (mrtp_uint32)timeGetTime();
@@ -101,7 +101,7 @@ int main(int argc, char ** argv) {
 				if (seqNumber >= TOTALPACKET) {
 					printf("Total rtt: %d, average rtt: %f max rtt: %d\n", 
 						totalRTT, totalRTT * 1.0 / TOTALPACKET, maxRTT);
-					mrtp_peer_disconnect(peer, 0);
+					mrtp_peer_disconnect(peer);
 					disconnected = true;
 				}
 

@@ -132,11 +132,6 @@ void mrtp_peer_reset(MRtpPeer * peer) {
 	peer->lastReceiveTime = 0;
 	peer->nextTimeout = 0;
 	peer->earliestTimeout = 0;
-	peer->packetLossEpoch = 0;
-	peer->packetsSent = 0;
-	peer->packetsLost = 0;
-	peer->packetLoss = 0;
-	peer->packetLossVariance = 0;
 	peer->packetThrottle = MRTP_PEER_DEFAULT_PACKET_THROTTLE;
 	peer->packetThrottleLimit = MRTP_PEER_PACKET_THROTTLE_SCALE;
 	peer->packetThrottleCounter = 0;
@@ -343,7 +338,7 @@ int mrtp_peer_throttle(MRtpPeer * peer, mrtp_uint32 rtt) {
 	return 0;
 }
 
-void mrtp_peer_disconnect(MRtpPeer * peer, mrtp_uint32 data) {
+void mrtp_peer_disconnect(MRtpPeer * peer) {
 	MRtpProtocol command;
 
 	if (peer->state == MRTP_PEER_STATE_DISCONNECTING ||
@@ -355,7 +350,6 @@ void mrtp_peer_disconnect(MRtpPeer * peer, mrtp_uint32 data) {
 	mrtp_peer_reset_queues(peer);
 
 	command.header.command = MRTP_PROTOCOL_COMMAND_DISCONNECT;
-	command.disconnect.data = MRTP_HOST_TO_NET_32(data);
 
 	if (peer->state == MRTP_PEER_STATE_CONNECTED || peer->state == MRTP_PEER_STATE_DISCONNECT_LATER)
 		command.header.command |= MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
@@ -373,19 +367,18 @@ void mrtp_peer_disconnect(MRtpPeer * peer, mrtp_uint32 data) {
 	}
 }
 
-void mrtp_peer_disconnect_later(MRtpPeer * peer, mrtp_uint32 data) {
+void mrtp_peer_disconnect_later(MRtpPeer * peer) {
 	if ((peer->state == MRTP_PEER_STATE_CONNECTED || peer->state == MRTP_PEER_STATE_DISCONNECT_LATER) &&
 		!(mrtp_list_empty(&peer->outgoingReliableCommands) && mrtp_list_empty(&peer->sentReliableCommands)))
 	{
 		peer->state = MRTP_PEER_STATE_DISCONNECT_LATER;
-		peer->eventData = data;
 	}
 	else
-		mrtp_peer_disconnect(peer, data);
+		mrtp_peer_disconnect(peer);
 }
 
 // 发送一个不需要ack的断开连接的命令，随后重置该peer
-void mrtp_peer_disconnect_now(MRtpPeer * peer, mrtp_uint32 data) {
+void mrtp_peer_disconnect_now(MRtpPeer * peer) {
 	MRtpProtocol command;
 
 	if (peer->state == MRTP_PEER_STATE_DISCONNECTED)
@@ -395,7 +388,6 @@ void mrtp_peer_disconnect_now(MRtpPeer * peer, mrtp_uint32 data) {
 		mrtp_peer_reset_queues(peer);
 
 		command.header.command = MRTP_PROTOCOL_COMMAND_DISCONNECT;
-		command.disconnect.data = MRTP_HOST_TO_NET_32(data);
 
 		mrtp_peer_queue_outgoing_command(peer, &command, NULL, 0, 0);
 
