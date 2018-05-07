@@ -2538,11 +2538,10 @@ static int mrtp_protocol_handle_incoming_commands(MRtpHost * host, MRtpEvent * e
 				goto commandError;
 			break;
 
-			
-			case MRTP_PROTOCOL_COMMAND_THROTTLE_CONFIGURE:
-				if (mrtp_protocol_handle_throttle_configure(host, peer, command))
-					goto commandError;
-			break;
+		case MRTP_PROTOCOL_COMMAND_THROTTLE_CONFIGURE:
+			if (mrtp_protocol_handle_throttle_configure(host, peer, command))
+				goto commandError;
+		break;
 
 		default:
 			goto commandError;
