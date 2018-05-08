@@ -62,7 +62,7 @@ int main(int argc, char ** argv) {
 	const int PACKELENGTH = 80;
 	enet_uint32 packetNum = 1;
 	enet_uint32 currentTime = (enet_uint32)timeGetTime();
-	enet_uint32 slap = currentTime + 30;
+	enet_uint32 slap = currentTime + 1000;
 	enet_uint32 totalRTT = 0, maxRTT = 0;
 	enet_uint8 * buffer = (enet_uint8 *)malloc(PACKELENGTH);
 	memset(buffer, 'a', PACKELENGTH);

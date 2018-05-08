@@ -145,6 +145,8 @@ int mrtp_socket_set_option(MRtpSocket socket, MRtpSocketOption option, int value
 		break;
 	}
 
+	// The state of the SO_BROADCAST socket option determines whether broadcast messages 
+	// can be transmitted over a datagram socket.This socket option applies only to datagram sockets.
 	case MRTP_SOCKOPT_BROADCAST:
 		result = setsockopt(socket, SOL_SOCKET, SO_BROADCAST, (char *)& value, sizeof(int));
 		break;

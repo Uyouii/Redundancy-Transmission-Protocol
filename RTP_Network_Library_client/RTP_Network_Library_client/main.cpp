@@ -7,8 +7,10 @@
 #include<fstream>
 
 //#define SERVERADDRESS "10.240.66.57"
+//#define SERVERADDRESS "192.168.31.233"
 #define SERVERADDRESS "10.242.3.221"
 //#define SERVERADDRESS "127.0.0.1"
+//#define GENERATECSVFILE
 
 MRtpHost* createClient() {
 	MRtpHost * client;
@@ -62,12 +64,14 @@ int main(int argc, char ** argv) {
 	const int PACKELENGTH = 80;
 	mrtp_uint32 packetNum = 1;
 	mrtp_uint32 currentTime = (mrtp_uint32)timeGetTime();
-	mrtp_uint32 slap = currentTime + 30;
-	mrtp_uint32 totalRTT = 0, maxRTT = 0;
+	mrtp_uint32 slap = currentTime + 1000;
+	mrtp_uint32 totalRTT = 0, maxRTT = 0, totalNum = 0;
 	mrtp_uint8 * buffer = (mrtp_uint8 *)malloc(PACKELENGTH);
 	memset(buffer, 'a', PACKELENGTH);
-
+#ifdef GENERATECSVFILE
 	std::ofstream out_file("mrtp.csv");
+#endif // GENERATECSVFILE
+
 	while (true) {
 
 		currentTime = (mrtp_uint32)timeGetTime();
@@ -91,16 +95,19 @@ int main(int argc, char ** argv) {
 				mrtp_uint32 rtt = currentTime - sendTimeStamp;
 				printf("Receive a Pakcet of length: %d. Sequence Number: %d, TimeStamp: %d rtt: %dms\n",
 					event.packet->dataLength, seqNumber, sendTimeStamp, rtt);
+#ifdef GENERATECSVFILE
 				out_file << seqNumber << ", " << rtt << std::endl;
+#endif
 				totalRTT += rtt;
 				if (rtt > maxRTT)
 					maxRTT = rtt;
+				totalNum += 1;
 				/* Clean up the packet now that we're done using it. */
 				mrtp_packet_destroy(event.packet);
 
 				if (seqNumber >= TOTALPACKET) {
-					printf("Total rtt: %d, average rtt: %f max rtt: %d\n", 
-						totalRTT, totalRTT * 1.0 / TOTALPACKET, maxRTT);
+					printf("Total rtt: %d, average rtt: %f max rtt: %d totalNum: %d\n", 
+						totalRTT, totalRTT * 1.0 / totalNum, maxRTT, totalNum);
 					mrtp_peer_disconnect(peer);
 					disconnected = true;
 				}
@@ -122,9 +129,10 @@ int main(int argc, char ** argv) {
 
 		Sleep(1);
 	}
-	printf("totalData: %d totalPackets: %d\n", client->totalSentData, client->totalSentPackets);
-
+	printf("totalData: %d totalPackets: %d \n", client->totalSentData, client->totalSentPackets);
+#ifdef GENERATECSVFILE
 	out_file.close();
+#endif
 	atexit(mrtp_deinitialize);
 
 #ifdef _MSC_VER
