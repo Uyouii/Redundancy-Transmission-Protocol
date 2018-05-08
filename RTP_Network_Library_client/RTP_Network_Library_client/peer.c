@@ -99,18 +99,16 @@ void mrtp_peer_reset_queues(MRtpPeer * peer) {
 	mrtp_peer_reset_outgoing_commands(&peer->sentUnsequencedCommands);
 	mrtp_peer_reset_incoming_commands(&peer->dispatchedCommands);
 
-	if (peer->channels != NULL && peer->channelCount > 0) {
-		for (channel = peer->channels;
-			channel < &peer->channels[peer->channelCount];
-			++channel) {
-			mrtp_peer_reset_incoming_commands(&channel->incomingCommands);
-		}
 
-		mrtp_free(peer->channels);
+	for (channel = peer->channels; channel < &peer->channels[peer->channelCount]; ++channel) {
+		mrtp_peer_reset_incoming_commands(&channel->incomingCommands);
+		channel->outgoingSequenceNumber = 0;
+		channel->incomingSequenceNumber = 0;
+
+		channel->usedWindows = 0;
+		memset(channel->commandWindows, 0, sizeof(channel->commandWindows));
 	}
 
-	peer->channels = NULL;
-	peer->channelCount = 0;
 }
 
 void mrtp_peer_reset(MRtpPeer * peer) {

@@ -95,6 +95,17 @@ MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount,
 		mrtp_list_clear(&currentPeer->outgoingUnsequencedCommands);
 		mrtp_list_clear(&currentPeer->sentUnsequencedCommands);
 
+		currentPeer->channels = (MRtpChannel *)mrtp_malloc(MRTP_PROTOCOL_CHANNEL_COUNT * sizeof(MRtpChannel));
+		if (currentPeer->channels == NULL)
+			return NULL;
+		currentPeer->channelCount = MRTP_PROTOCOL_CHANNEL_COUNT;
+
+		for (MRtpChannel *channel = currentPeer->channels; 
+			channel < &currentPeer->channels[currentPeer->channelCount]; ++channel) 
+		{
+			mrtp_list_clear(&channel->incomingCommands);
+		}
+
 		mrtp_peer_reset(currentPeer);
 	}
 
@@ -115,10 +126,6 @@ MRtpPeer *mrtp_host_connect(MRtpHost * host, const MRtpAddress * address) {
 	if (currentPeer >= &host->peers[host->peerCount])
 		return NULL;
 
-	currentPeer->channels = (MRtpChannel *)mrtp_malloc(MRTP_PROTOCOL_CHANNEL_COUNT * sizeof(MRtpChannel));
-	if (currentPeer->channels == NULL)
-		return NULL;
-	currentPeer->channelCount = MRTP_PROTOCOL_CHANNEL_COUNT;
 	currentPeer->state = MRTP_PEER_STATE_CONNECTING;
 	currentPeer->address = *address;
 	currentPeer->connectID = ++host->randomSeed;
@@ -133,17 +140,6 @@ MRtpPeer *mrtp_host_connect(MRtpHost * host, const MRtpAddress * address) {
 		currentPeer->windowSize = MRTP_PROTOCOL_MINIMUM_WINDOW_SIZE;
 	else if (currentPeer->windowSize > MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE)
 		currentPeer->windowSize = MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE;
-
-	for (channel = currentPeer->channels; channel < &currentPeer->channels[MRTP_PROTOCOL_CHANNEL_COUNT]; ++channel) {
-
-		channel->outgoingSequenceNumber = 0;
-		channel->incomingSequenceNumber = 0;
-
-		mrtp_list_clear(&channel->incomingCommands);
-
-		channel->usedWindows = 0;
-		memset(channel->commandWindows, 0, sizeof(channel->commandWindows));
-	}
 
 	command.header.command = MRTP_PROTOCOL_COMMAND_CONNECT | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
 	command.connect.outgoingPeerID = MRTP_HOST_TO_NET_16(currentPeer->incomingPeerID);
@@ -193,6 +189,7 @@ void mrtp_host_destroy(MRtpHost * host) {
 
 	for (currentPeer = host->peers; currentPeer < &host->peers[host->peerCount]; ++currentPeer) {
 		mrtp_peer_reset(currentPeer);
+		mrtp_free(currentPeer->channels);
 	}
 
 	mrtp_free(host->peers);
@@ -202,7 +199,7 @@ void mrtp_host_destroy(MRtpHost * host) {
 void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 
 	mrtp_uint32 timeCurrent = mrtp_time_get();
-	mrtp_uint32 elapsedTime = timeCurrent - host->bandwidthThrottleEpoch;//距离上次流量控制的时间
+	mrtp_uint32 elapsedTime = timeCurrent - host->bandwidthThrottleEpoch; // elapsed time from last bandwidth throttle
 	mrtp_uint32	peersRemaining = (mrtp_uint32)host->connectedPeers;
 	mrtp_uint32 dataTotal = ~0;
 	mrtp_uint32 bandwidth = ~0;
@@ -214,7 +211,7 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 
 	if (elapsedTime < MRTP_HOST_BANDWIDTH_THROTTLE_INTERVAL)
 		return;
-	//重置做流量控制的时间
+
 	host->bandwidthThrottleEpoch = timeCurrent;
 
 	if (peersRemaining == 0)
@@ -223,18 +220,18 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 	if (host->outgoingBandwidth != 0) {
 		dataTotal = 0;
 
-		//在全带宽时，在间隔时间内传输的数据量
+		//the data size at full outgoingBandwidth during the elapsed time
 		bandwidth = (host->outgoingBandwidth * elapsedTime) / 1000;
 
 		for (peer = host->peers; peer < &host->peers[host->peerCount]; ++peer) {
 			if (peer->state != MRTP_PEER_STATE_CONNECTED && peer->state != MRTP_PEER_STATE_DISCONNECT_LATER)
 				continue;
 
-			dataTotal += peer->outgoingDataTotal;	//向peer发送的数据
+			dataTotal += peer->outgoingDataTotal;	// the total data send to peer during the elapsed time
 		}
 	}
 
-	//调节peer -> packetThrottleLimit 和 peer -> packetThrottle
+	// adjust peer -> packetThrottleLimit and peer -> packetThrottle
 	while (peersRemaining > 0 && needsAdjustment != 0) {
 		needsAdjustment = 0;
 

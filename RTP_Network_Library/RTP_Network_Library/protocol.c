@@ -334,6 +334,7 @@ static void mrtp_protocol_send_acknowledgements(MRtpHost * host, MRtpPeer * peer
 		command->acknowledge.receivedSentTime = MRTP_HOST_TO_NET_16(acknowledgement->sentTime);
 		command->acknowledge.channelID = channelIDs[acknowledgement->command.header.command & MRTP_PROTOCOL_COMMAND_MASK];
 		if (command->acknowledge.channelID < peer->channelCount) {
+			// maybe 
 			if (peer->channels) {
 				command->acknowledge.nextUnackSequenceNumber =
 					MRTP_HOST_TO_NET_16(peer->channels[command->acknowledge.channelID].incomingSequenceNumber + 1);
@@ -734,6 +735,7 @@ static int mrtp_protocol_send_redundancy_commands(MRtpHost * host, MRtpPeer * pe
 			peer->nextRedundancyTimeout = host->serviceTime + outgoingCommand->roundTripTimeout;
 		}
 
+		// after all command has send, then refresh the sent time stamp
 		if (host->continueSending == 0) {
 			peer->redundancyLastSentTimeStamp = host->serviceTime;
 		}
@@ -741,6 +743,7 @@ static int mrtp_protocol_send_redundancy_commands(MRtpHost * host, MRtpPeer * pe
 
 	currentCommand = mrtp_list_begin(&peer->outgoingRedundancyCommands);
 
+	// if there is some commands need to send in outgoingRedundancyCommands queue
 	while (currentCommand != mrtp_list_end(&peer->outgoingRedundancyCommands)) {
 
 		outgoingCommand = (MRtpOutgoingCommand *)currentCommand;
@@ -762,6 +765,7 @@ static int mrtp_protocol_send_redundancy_commands(MRtpHost * host, MRtpPeer * pe
 		}
 
 		// if the data in transmit is lager than the window size
+		// to ensure that the data in transmit is not too mush
 		if (outgoingCommand->packet != NULL) {
 			if (!windowExceeded) {
 				mrtp_uint32 windowSize = (peer->packetThrottle * peer->windowSize) / MRTP_PEER_PACKET_THROTTLE_SCALE;
@@ -1580,13 +1584,9 @@ static MRtpPeer * mrtp_protocol_handle_connect(MRtpHost * host, MRtpProtocolHead
 {
 	mrtp_uint8 incomingSessionID, outgoingSessionID;
 	mrtp_uint32 mtu, windowSize;
-	MRtpChannel * channel;
 	size_t duplicatePeers = 0;
 	MRtpPeer * currentPeer, *peer = NULL;
 	MRtpProtocol verifyCommand;
-
-	size_t channelCount = MRTP_PROTOCOL_CHANNEL_COUNT;
-
 
 	for (currentPeer = host->peers; currentPeer < &host->peers[host->peerCount]; ++currentPeer) {
 		//找到第一个已经断开连接的或者没有分配的位置
@@ -1607,10 +1607,6 @@ static MRtpPeer * mrtp_protocol_handle_connect(MRtpHost * host, MRtpProtocolHead
 	if (peer == NULL || duplicatePeers >= host->duplicatePeers)
 		return NULL;
 
-	peer->channels = (MRtpChannel *)mrtp_malloc(channelCount * sizeof(MRtpChannel));
-	if (peer->channels == NULL)
-		return NULL;
-	peer->channelCount = channelCount;
 	peer->state = MRTP_PEER_STATE_ACKNOWLEDGING_CONNECT;
 	peer->connectID = command->connect.connectID;
 	peer->address = host->receivedAddress;
@@ -1632,16 +1628,6 @@ static MRtpPeer * mrtp_protocol_handle_connect(MRtpHost * host, MRtpProtocolHead
 	if (outgoingSessionID == peer->incomingSessionID)
 		outgoingSessionID = (outgoingSessionID + 1) & (MRTP_PROTOCOL_HEADER_SESSION_MASK >> MRTP_PROTOCOL_HEADER_SESSION_SHIFT);
 	peer->incomingSessionID = outgoingSessionID;
-
-	for (channel = peer->channels; channel < &peer->channels[channelCount]; ++channel) {
-		channel->outgoingSequenceNumber = 0;
-		channel->incomingSequenceNumber = 0;
-
-		mrtp_list_clear(&channel->incomingCommands);
-
-		channel->usedWindows = 0;
-		memset(channel->commandWindows, 0, sizeof(channel->commandWindows));
-	}
 
 	mtu = MRTP_NET_TO_HOST_32(command->connect.mtu);
 
