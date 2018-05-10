@@ -5,12 +5,15 @@
 #include<string>
 #include<iostream>
 #include<fstream>
+#include<string>
+#include<vector>
 
 //#define SERVERADDRESS "10.240.66.57"
 //#define SERVERADDRESS "192.168.31.233"
 #define SERVERADDRESS "10.242.3.221"
 //#define SERVERADDRESS "127.0.0.1"
-//#define GENERATECSVFILE
+#define GENERATECSVFILE
+#define PACKETSTYLE MRTP_PACKET_FLAG_REDUNDANCY
 
 MRtpHost* createClient() {
 	MRtpHost * client;
@@ -70,6 +73,10 @@ int main(int argc, char ** argv) {
 	memset(buffer, 'a', PACKELENGTH);
 #ifdef GENERATECSVFILE
 	std::ofstream out_file("mrtp.csv");
+	std::vector<std::vector<int>> rttData(TOTALPACKET, std::vector<int>(2,0));
+	for (int i = 1; i <= rttData.size(); i++) {
+		rttData[i - 1][0] = i;
+	}
 #endif // GENERATECSVFILE
 
 	while (true) {
@@ -96,7 +103,8 @@ int main(int argc, char ** argv) {
 				printf("Receive a Pakcet of length: %d. Sequence Number: %d, TimeStamp: %d rtt: %dms\n",
 					event.packet->dataLength, seqNumber, sendTimeStamp, rtt);
 #ifdef GENERATECSVFILE
-				out_file << seqNumber << ", " << rtt << std::endl;
+				//out_file << seqNumber << ", " << rtt << std::endl;
+				rttData[seqNumber - 1][1] = rtt;
 #endif
 				totalRTT += rtt;
 				if (rtt > maxRTT)
@@ -123,7 +131,7 @@ int main(int argc, char ** argv) {
 			((mrtp_uint32*)buffer)[1] = currentTime;
 			slap += 30;
 			packetNum++;
-			MRtpPacket * packet = mrtp_packet_create(buffer, PACKELENGTH, MRTP_PACKET_FLAG_RELIABLE);
+			MRtpPacket * packet = mrtp_packet_create(buffer, PACKELENGTH, PACKETSTYLE);
 			mrtp_peer_send(peer, packet);
 		}
 
@@ -131,6 +139,43 @@ int main(int argc, char ** argv) {
 	}
 	printf("totalData: %d totalPackets: %d \n", client->totalSentData, client->totalSentPackets);
 #ifdef GENERATECSVFILE
+	out_file << "library, " << "mrtp" << std::endl;
+	out_file << "totalNumber, " << TOTALPACKET << std::endl;
+	out_file << "totalReceive, " << totalNum << std::endl;
+	out_file << "packetLength, " << PACKELENGTH << std::endl;
+	out_file << "totalRtt, " << totalRTT << std::endl;
+	out_file << "averageRtt, " << totalRTT * 1.0 / totalNum << std::endl;
+	out_file << "maxRtt, " << maxRTT << std::endl;
+	out_file << "needSendData, " << TOTALPACKET * PACKELENGTH << std::endl;
+	out_file << "totalSendData, " << client->totalSentData << std::endl;
+	out_file << "totalReceiveData, " << client->totalReceivedData << std::endl;
+	out_file << "totalSendUdpPacket, " << client->totalSentPackets << std::endl;
+	out_file << "totalReceiveUdpPacket, " << client->totalReceivedPackets << std::endl;
+	out_file << "upstreamLoss, 5" << std::endl;
+	out_file << "upstreamLatency, 8" << std::endl;
+	out_file << "downstreamLoss, 5" << std::endl;
+	out_file << "downstreamLatency, 8" << std::endl;
+	out_file << "timeStamp, " << (size_t)timeGetTime() << std::endl;
+	std::string packetStyle;
+	switch (PACKETSTYLE)
+	{
+	case MRTP_PACKET_FLAG_REDUNDANCY:
+		packetStyle = "redundancy";
+		break;
+	case MRTP_PACKET_FLAG_RELIABLE:
+		packetStyle = "reliable";
+		break;
+	case MRTP_PACKET_FLAG_REDUNDANCY_NO_ACK:
+		packetStyle = "redundancynoack";
+		break;
+	case MRTP_PACKET_FLAG_UNSEQUENCED:
+		packetStyle = "unsequenced";
+		break;
+	}
+	out_file << "packetStyle, " << packetStyle << std::endl;
+	for (int i = 0; i < rttData.size(); i++) {
+		out_file << i + 1 << ", " << rttData[i][1] << std::endl;
+	}
 	out_file.close();
 #endif
 	atexit(mrtp_deinitialize);

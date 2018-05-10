@@ -40,7 +40,7 @@ static void mrtp_peer_remove_incoming_commands(MRtpList * queue, MRtpListIterato
 
 		if (incomingCommand->packet != NULL) {
 			--incomingCommand->packet->referenceCount;
-			// 在删除incomingCommand时如果发现packet引用次数为0，则删除packet
+			// if there is no command to use this packet, then delete packet
 			if (incomingCommand->packet->referenceCount == 0)
 				mrtp_packet_destroy(incomingCommand->packet);
 		}
@@ -289,29 +289,27 @@ MRtpAcknowledgement * mrtp_peer_queue_redundancy_acknowldegement(MRtpPeer* peer,
 {
 	mrtp_uint16 nextRedundancyNumber = peer->channels[MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM].incomingSequenceNumber + 1;
 	mrtp_uint16 sequenceNumber = MRTP_NET_TO_HOST_16(command->header.sequenceNumber);
-	/*
-		
-	*/
-	if (sequenceNumber >= nextRedundancyNumber - 1) {
-		MRtpAcknowledgement * acknowledgement;
 
-		acknowledgement = (MRtpAcknowledgement *)mrtp_malloc(sizeof(MRtpAcknowledgement));
-		if (acknowledgement == NULL)
-			return NULL;
+	//if (sequenceNumber >= nextRedundancyNumber - 1) {
+	MRtpAcknowledgement * acknowledgement;
 
-		peer->outgoingDataTotal += sizeof(MRtpProtocolRedundancyAcknowledge);
+	acknowledgement = (MRtpAcknowledgement *)mrtp_malloc(sizeof(MRtpAcknowledgement));
+	if (acknowledgement == NULL)
+		return NULL;
 
-		acknowledgement->sentTime = sentTime;
-		acknowledgement->command = *command;
+	peer->outgoingDataTotal += sizeof(MRtpProtocolRedundancyAcknowledge);
 
-		mrtp_list_insert(mrtp_list_end(&peer->redundancyAcknowledgemets), acknowledgement);
+	acknowledgement->sentTime = sentTime;
+	acknowledgement->command = *command;
 
-		return acknowledgement;
-	}
-	return NULL;
+	mrtp_list_insert(mrtp_list_end(&peer->redundancyAcknowledgemets), acknowledgement);
+
+	return acknowledgement;
+	//}
+	//return NULL;
 }
 
-//调节peer->packetThrottle
+// according to rtt adjust peer->packetThrottle
 int mrtp_peer_throttle(MRtpPeer * peer, mrtp_uint32 rtt) {
 
 	if (peer->lastRoundTripTime <= peer->lastRoundTripTimeVariance) {
@@ -375,7 +373,7 @@ void mrtp_peer_disconnect_later(MRtpPeer * peer) {
 		mrtp_peer_disconnect(peer);
 }
 
-// 发送一个不需要ack的断开连接的命令，随后重置该peer
+// send a command which doesn't need ack, then reset peer right now
 void mrtp_peer_disconnect_now(MRtpPeer * peer) {
 	MRtpProtocol command;
 
@@ -504,10 +502,6 @@ int mrtp_peer_send_redundancy_noack(MRtpPeer* peer, MRtpPacket* packet) {
 
 int mrtp_peer_send_redundancy(MRtpPeer* peer, MRtpPacket* packet) {
 
-	//// if redundancyBuffers hasn't been initialized
-	//if (peer->redundancyNum == 0 || !peer->redundancyBuffers || peer->redundancyNum != peer->host->redundancyNum)
-	//	mrtp_peer_reset_reduandancy_buffer(peer, peer->host->redundancyNum);
-
 	MRtpChannel* channel = &peer->channels[MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM];
 	MRtpProtocol command;
 	size_t fragmentLength;
@@ -591,7 +585,7 @@ int mrtp_peer_send_reliable(MRtpPeer * peer, MRtpPacket * packet) {
 
 	fragmentLength = peer->mtu - sizeof(MRtpProtocolHeader) - sizeof(MRtpProtocolSendFragment);
 
-	// 如果需要分片
+	// if packet length if larger than mtu, then need fragment
 	if (packet->dataLength > fragmentLength) {
 		mrtp_uint32 fragmentCount = (packet->dataLength + fragmentLength - 1) / fragmentLength,
 			fragmentNumber,

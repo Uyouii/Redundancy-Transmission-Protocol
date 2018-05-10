@@ -289,26 +289,24 @@ MRtpAcknowledgement * mrtp_peer_queue_redundancy_acknowldegement(MRtpPeer* peer,
 {
 	mrtp_uint16 nextRedundancyNumber = peer->channels[MRTP_PROTOCOL_REDUNDANCY_CHANNEL_NUM].incomingSequenceNumber + 1;
 	mrtp_uint16 sequenceNumber = MRTP_NET_TO_HOST_16(command->header.sequenceNumber);
-	/*
 
-	*/
-	if (sequenceNumber >= nextRedundancyNumber - 1) {
-		MRtpAcknowledgement * acknowledgement;
+	//if (sequenceNumber >= nextRedundancyNumber - 1) {
+	MRtpAcknowledgement * acknowledgement;
 
-		acknowledgement = (MRtpAcknowledgement *)mrtp_malloc(sizeof(MRtpAcknowledgement));
-		if (acknowledgement == NULL)
-			return NULL;
+	acknowledgement = (MRtpAcknowledgement *)mrtp_malloc(sizeof(MRtpAcknowledgement));
+	if (acknowledgement == NULL)
+		return NULL;
 
-		peer->outgoingDataTotal += sizeof(MRtpProtocolRedundancyAcknowledge);
+	peer->outgoingDataTotal += sizeof(MRtpProtocolRedundancyAcknowledge);
 
-		acknowledgement->sentTime = sentTime;
-		acknowledgement->command = *command;
+	acknowledgement->sentTime = sentTime;
+	acknowledgement->command = *command;
 
-		mrtp_list_insert(mrtp_list_end(&peer->redundancyAcknowledgemets), acknowledgement);
+	mrtp_list_insert(mrtp_list_end(&peer->redundancyAcknowledgemets), acknowledgement);
 
-		return acknowledgement;
-	}
-	return NULL;
+	return acknowledgement;
+	//}
+	//return NULL;
 }
 
 //调节peer->packetThrottle

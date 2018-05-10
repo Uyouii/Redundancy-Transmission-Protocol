@@ -74,7 +74,7 @@ MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount,
 
 	mrtp_list_clear(&host->dispatchQueue);
 
-	//初始化peers数组的信息
+	// initilize the peers array
 	for (currentPeer = host->peers; currentPeer < &host->peers[host->peerCount]; ++currentPeer) {
 
 		currentPeer->host = host;
@@ -118,7 +118,7 @@ MRtpPeer *mrtp_host_connect(MRtpHost * host, const MRtpAddress * address) {
 	MRtpProtocol command;
 
 	for (currentPeer = host->peers; currentPeer < &host->peers[host->peerCount]; ++currentPeer) {
-		//找到第一个可用的peer
+		// find the first peer which state is disconnected
 		if (currentPeer->state == MRTP_PEER_STATE_DISCONNECTED)
 			break;
 	}
@@ -244,27 +244,27 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 			mrtp_uint32 peerBandwidth;
 
 			if ((peer->state != MRTP_PEER_STATE_CONNECTED &&
-				peer->state != MRTP_PEER_STATE_DISCONNECT_LATER) ||	//保证peer是连接状态
-				peer->incomingBandwidth == 0 ||						//允从接收数据
-				peer->outgoingBandwidthThrottleEpoch == timeCurrent)	//不是刚刚调节过
+				peer->state != MRTP_PEER_STATE_DISCONNECT_LATER) ||	// peer is conected
+				peer->incomingBandwidth == 0 ||						// peer open flow control
+				peer->outgoingBandwidthThrottleEpoch == timeCurrent)// hasn't been adjusted before
 				continue;
 
-			peerBandwidth = (peer->incomingBandwidth * elapsedTime) / 1000;	//peer在间隔时间内能接收的最大数据
+			peerBandwidth = (peer->incomingBandwidth * elapsedTime) / 1000;	// the largerest data peer can receive in the elapsed time
 
             // if((peerBandwidth * MRTP_PEER_PACKET_THROTTLE_SCALE)/ peer->outgoingDataTotal >= throttle)
-            // 如果peer接收数据的能力/peer接收的数据量大于host发送数据的能力/host发送的数据量
-            // 即peer接收能力大于平均水平，则不调节
+            // if peer's receive abliity / peer receive data > host send ability / host send data
+            // means peer receive ability can hold up host send ability now, so don't need adjust this time
 			if ((throttle * peer->outgoingDataTotal) / MRTP_PEER_PACKET_THROTTLE_SCALE <= peerBandwidth)
 				continue;
 
-			// 低于平均水平时
+			// if peer receive ability lower than host average send ability
+			// then set the palcetThrottleLimit to limit the value of packetThrottle to limit the speed of data send
 			peer->packetThrottleLimit = (peerBandwidth * MRTP_PEER_PACKET_THROTTLE_SCALE) / peer->outgoingDataTotal;
 
-			//packThrottleLimit最小值为1
+			// ensure that packetThrottleLimit is larger than zero
 			if (peer->packetThrottleLimit == 0)
 				peer->packetThrottleLimit = 1;
 
-			//设置packetThrottle
 			if (peer->packetThrottle > peer->packetThrottleLimit)
 				peer->packetThrottle = peer->packetThrottleLimit;
 
@@ -280,8 +280,8 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 		}
 	}
 
-	//调节incomingBandwidth为0的peer的throttle
-	//以及上面没有调节的大于平均水平的peer，将其throttle设置为throttle
+	// if there are still some peer hasn't been adjusted
+	// then set their packetThrottleLimit to the lagerest value
 	if (peersRemaining > 0) {
 		if (dataTotal <= bandwidth)
 			throttle = MRTP_PEER_PACKET_THROTTLE_SCALE;
@@ -314,7 +314,7 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 #endif // FLOWCONTROLDEBUG
 
 
-	//如果需要重新计算带宽限制
+	// if need recalculateBandwidthLimit 
 	if (host->recalculateBandwidthLimits) {
 		host->recalculateBandwidthLimits = 0;
 
@@ -327,18 +327,19 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 		else {
 			while (peersRemaining > 0 && needsAdjustment != 0) {
 				needsAdjustment = 0;
-				//取平均数，会随着循环增大
+				// get the host incoming bandwidth average value each time
 				bandwidthLimit = bandwidth / peersRemaining;
 
 				for (peer = host->peers; peer < &host->peers[host->peerCount]; ++peer) {
 					if ((peer->state != MRTP_PEER_STATE_CONNECTED &&
-						peer->state != MRTP_PEER_STATE_DISCONNECT_LATER) ||	//是已经连接的peer
-						peer->incomingBandwidthThrottleEpoch == timeCurrent)	//之前没有处理过
+						peer->state != MRTP_PEER_STATE_DISCONNECT_LATER) ||		// peer has alerady connected
+						peer->incomingBandwidthThrottleEpoch == timeCurrent)	// hasn't been handled before
 						continue;
 
 					if (peer->outgoingBandwidth > 0 && peer->outgoingBandwidth >= bandwidthLimit)
 						continue;
-					//将outgoingBandwidth小于平均水平的peer标记出来
+					// sign the send data ability lower than the average of host receive ability peer
+					// doesn't need to change their outgoing bandwith
 					peer->incomingBandwidthThrottleEpoch = timeCurrent;
 
 					needsAdjustment = 1;
@@ -353,17 +354,18 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 			if (peer->state != MRTP_PEER_STATE_CONNECTED && peer->state != MRTP_PEER_STATE_DISCONNECT_LATER)
 				continue;
 
-			//向带宽大于平均水平的peer发送流量控制命令
+			// send the bandwidth limit command to the connected peer
 			command.header.command = MRTP_PROTOCOL_COMMAND_BANDWIDTH_LIMIT | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
 			command.bandwidthLimit.outgoingBandwidth = MRTP_HOST_TO_NET_32(host->outgoingBandwidth);
 
-			// 将超过平均水平的设置为平均水平，否则不变，发送带宽控制命令
+			// to prevent peer send data larger than host receive ability,
+			// set the remainint peer's outgoing bandwidth to bandwidthLimit
 			if (peer->incomingBandwidthThrottleEpoch == timeCurrent)
 				command.bandwidthLimit.incomingBandwidth = MRTP_HOST_TO_NET_32(peer->outgoingBandwidth);
 			else
 				command.bandwidthLimit.incomingBandwidth = MRTP_HOST_TO_NET_32(bandwidthLimit);
 
-			//设置发送给peer的command，并将该command添加到peer的command处理队列中
+			// add the bandwidth limit command to outgoing queue
 			mrtp_peer_queue_outgoing_command(peer, &command, NULL, 0, 0);
 		}
 	}
