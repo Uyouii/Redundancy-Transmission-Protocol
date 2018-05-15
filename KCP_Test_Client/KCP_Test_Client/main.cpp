@@ -8,6 +8,9 @@
 #include <string.h>
 #include <winsock2.h>
 #include <iostream>
+#include <fstream>
+#include <string>
+#include <vector>
 
 #include "ikcp.h"
 
@@ -15,9 +18,15 @@
 #define SERVERADDR "10.242.3.221"
 //#define SERVERADDR "192.168.31.233"
 
+#define GENERATECSVFILE
+
 sockaddr_in servAddr;
 SOCKADDR_IN peeraddr;
 int peeraddr_len = sizeof(peeraddr);
+size_t totalSendData = 0;
+size_t totalReceiveData = 0;
+size_t totalSendPacket = 0;
+size_t totalReceivePacket = 0;
 
 SOCKET set_socket() {
 
@@ -64,6 +73,8 @@ int udp_output(const char *buf, int len, ikcpcb *kcp, void * user) {
 		exit(-1);
 	}
 	//std::cout << "send " << sendLength << std::endl;
+	totalSendData += sendLength;
+	totalSendPacket++;
 	return 0;
 }
 
@@ -84,6 +95,8 @@ int udp_input(SOCKET socket, char *buf, int len) {
 		exit(1);
 	}
 	//std::cout << "receive " << receiveLength << std::endl;
+	totalReceiveData += receiveLength;
+	totalReceivePacket++;
 	return receiveLength;
 }
 
@@ -110,6 +123,13 @@ int main() {
 	char buffer[2000];
 	memset(buffer, 'a', 2000);
 	int hr;
+#ifdef GENERATECSVFILE
+	std::ofstream out_file("kcp.csv");
+	std::vector<std::vector<int>> rttData(TOTALPACKET, std::vector<int>(2, 0));
+	for (int i = 1; i <= rttData.size(); i++) {
+		rttData[i - 1][0] = i;
+	}
+#endif // GENERATECSVFILE
 
 	while (true) {
 		Sleep(1);
@@ -152,12 +172,52 @@ int main() {
 			if (rtt > (IUINT32)maxrtt) maxrtt = rtt;
 
 			std::cout << "[RECV] sn=" << sn << " rtt=" << rtt << std::endl;
+#ifdef GENERATECSVFILE
+			//out_file << seqNumber << ", " << rtt << std::endl;
+			if(sn < TOTALPACKET)
+				rttData[sn][1] = rtt;
+#endif
 		}
 		if (next > TOTALPACKET)
 			break;
 	}
 
 	std::cout << "avgrtt=" << 1.0 * sumrtt / count << " maxrtt=" << maxrtt << std::endl;
+#ifdef GENERATECSVFILE
+	out_file << "library, " << "kcp" << std::endl;
+	out_file << "totalNumber, " << TOTALPACKET << std::endl;
+	out_file << "totalReceive, " << TOTALPACKET << std::endl;
+	out_file << "packetLength, " << PACKELENGTH << std::endl;
+	size_t totalRtt = 0, maxRtt = 0;
+	double averRtt = 0;
+	for (int i = 0; i < rttData.size(); i++) {
+		totalRtt += rttData[i][1];
+		if (rttData[i][1] > maxRtt)
+			maxRtt = rttData[i][1];
+	}
+	averRtt = 1.0 * totalRtt / rttData.size();
+	out_file << "totalRtt, " << totalRtt << std::endl;
+	out_file << "averageRtt, " << averRtt << std::endl;
+	out_file << "maxRtt, " << maxRtt << std::endl;
+	out_file << "needSendData, " << TOTALPACKET * PACKELENGTH << std::endl;
+	out_file << "totalSendData, " << totalSendData << std::endl;
+	out_file << "totalReceiveData, " << totalReceiveData << std::endl;
+	out_file << "totalSendUdpPacket, " << totalSendPacket << std::endl;
+	out_file << "totalReceiveUdpPacket, " << totalReceivePacket << std::endl;
+	out_file << "upstreamLoss, 5" << std::endl;
+	out_file << "upstreamLatency, 10" << std::endl;
+	out_file << "upstreamDeviation, 8" << std::endl;
+	out_file << "downstreamLoss, 5" << std::endl;
+	out_file << "downstreamLatency, 10" << std::endl;
+	out_file << "downstreamDeviation, 8" << std::endl;
+	out_file << "timeStamp, " << (size_t)timeGetTime() << std::endl;
+	for (int i = 0; i < rttData.size(); i++) {
+		out_file << i + 1 << ", " << rttData[i][1] << std::endl;
+	}
+	out_file.close();
+#endif // GENERATECSVFILE
+
+
 #ifdef _MSC_VER
 	system("pause");
 #endif // _MSC_VER

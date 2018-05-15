@@ -1,4 +1,5 @@
-﻿#include"mrtp.h"
+﻿
+#include"mrtp.h"
 #include<cstdlib>
 #include<cstdio>
 #include<cstring>
@@ -10,10 +11,12 @@
 
 //#define SERVERADDRESS "10.240.66.57"
 //#define SERVERADDRESS "192.168.31.233"
+//#define SERVERADDRESS "192.168.1.6"
+//#define SERVERADDRESS "192.168.31.108"
 #define SERVERADDRESS "10.242.3.221"
 //#define SERVERADDRESS "127.0.0.1"
 #define GENERATECSVFILE
-#define PACKETSTYLE MRTP_PACKET_FLAG_REDUNDANCY
+#define PACKETSTYLE MRTP_PACKET_FLAG_UNSEQUENCED
 
 MRtpHost* createClient() {
 	MRtpHost * client;
@@ -152,9 +155,11 @@ int main(int argc, char ** argv) {
 	out_file << "totalSendUdpPacket, " << client->totalSentPackets << std::endl;
 	out_file << "totalReceiveUdpPacket, " << client->totalReceivedPackets << std::endl;
 	out_file << "upstreamLoss, 5" << std::endl;
-	out_file << "upstreamLatency, 8" << std::endl;
+	out_file << "upstreamLatency, 10" << std::endl;
+	out_file << "upstreamDeviation, 8" << std::endl;
 	out_file << "downstreamLoss, 5" << std::endl;
-	out_file << "downstreamLatency, 8" << std::endl;
+	out_file << "downstreamLatency, 10" << std::endl;
+	out_file << "downstreamDeviation, 8" << std::endl;
 	out_file << "timeStamp, " << (size_t)timeGetTime() << std::endl;
 	std::string packetStyle;
 	switch (PACKETSTYLE)

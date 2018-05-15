@@ -647,10 +647,10 @@ static int mrtp_protocol_send_redundancy_commands(MRtpHost * host, MRtpPeer * pe
 	// or need to send new command and maybe already has received the ack, but the ack command has lost
 	if (!mrtp_list_empty(&peer->sentRedundancyLastTimeCommands) && (peer->sendRedundancyAfterReceive == FALSE ||
 		(!mrtp_list_empty(&peer->outgoingRedundancyCommands) && (peer->redundancyLastSentTimeStamp == 0 || 
-			(MRTP_TIME_DIFFERENCE(host->serviceTime, peer->redundancyLastSentTimeStamp) >= peer->lowestRoundTripTime) || 
-			(peer->lowestRoundTripTime > peer->roundTripTimeVariance && 
+			(MRTP_TIME_DIFFERENCE(host->serviceTime, peer->redundancyLastSentTimeStamp) >= peer->roundTripTime) || 
+			(peer->roundTripTime > 2 * peer->roundTripTimeVariance && 
 				MRTP_TIME_DIFFERENCE(host->serviceTime, peer->redundancyLastSentTimeStamp) >=
-				peer->lowestRoundTripTime - peer->roundTripTimeVariance)))))
+				peer->roundTripTime - 2 * peer->roundTripTimeVariance)))))
 	{
 		currentCommand = mrtp_list_begin(&peer->sentRedundancyLastTimeCommands);
 
@@ -660,9 +660,9 @@ static int mrtp_protocol_send_redundancy_commands(MRtpHost * host, MRtpPeer * pe
 			channelID = channelIDs[outgoingCommand->command.header.command & MRTP_PROTOCOL_COMMAND_MASK];
 
 			// maybe this command is put in the queue just now
-			if (peer->lowestRoundTripTime > peer->roundTripTimeVariance && 
+			if (peer->roundTripTime > peer->roundTripTimeVariance &&
 				MRTP_TIME_DIFFERENCE(host->serviceTime, outgoingCommand->sentTime) < 
-				peer->lowestRoundTripTime - peer->roundTripTimeVariance) 
+				peer->roundTripTime - 2 * peer->roundTripTimeVariance)
 			{
 				currentCommand = mrtp_list_next(currentCommand);
 				continue;

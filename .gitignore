@@ -42,3 +42,7 @@ Release/
 
 *.rar
 *.zip
+
+*.idea/
+node_modules/
+

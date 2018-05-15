@@ -1,0 +1,161 @@
+<!doctype html>
+<!--[if lt IE 7]>      <html class="no-js lt-ie9 lt-ie8 lt-ie7" lang=""> <![endif]-->
+<!--[if IE 7]>         <html class="no-js lt-ie9 lt-ie8" lang=""> <![endif]-->
+<!--[if IE 8]>         <html class="no-js lt-ie9" lang=""> <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang=""> <!--<![endif]-->
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Sufee Admin - HTML5 Admin Template</title>
+    <meta name="description" content="Sufee Admin - HTML5 Admin Template">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <link rel="shortcut icon" href="favicon.ico">
+
+    <link rel="stylesheet" href="assets/css/normalize.css">
+    <link rel="stylesheet" href="assets/css/bootstrap.min.css">
+    <link rel="stylesheet" href="assets/css/font-awesome.min.css">
+    <link rel="stylesheet" href="assets/css/themify-icons.css">
+    <link rel="stylesheet" href="assets/css/flag-icon.min.css">
+    <link rel="stylesheet" href="assets/css/cs-skin-elastic.css">
+    <link rel="stylesheet" href="assets/css/lib/datatable/dataTables.bootstrap.min.css">
+    <!-- <link rel="stylesheet" href="assets/css/bootstrap-select.less"> -->
+    <link rel="stylesheet" href="assets/scss/style.css">
+
+    <link href='https://fonts.googleapis.com/css?family=Open+Sans:400,600,700,800' rel='stylesheet' type='text/css'>
+
+    <!-- <script type="text/javascript" src="https://cdn.jsdelivr.net/html5shiv/3.7.3/html5shiv.min.js"></script> -->
+
+</head>
+<body>
+<!-- Left Panel -->
+
+<aside id="left-panel" class="left-panel">
+    <nav class="navbar navbar-expand-sm navbar-default">
+
+        <h1 class="menu-title">NetWork Test</h1><!-- /.menu-title -->
+
+        <div id="main-menu" class="main-menu collapse navbar-collapse">
+            <ul class="nav navbar-nav">
+
+                <li class="menu-item-has-children dropdown">
+                    <a href="#" class="dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                        <i class="menu-icon ti-view-list-alt"></i>
+                        MRtp
+                    </a>
+                    <ul class="sub-menu children dropdown-menu">
+                        <li><i class="menu-icon ti-arrow-circle-right"></i>
+                            <a href="#" onclick=jumpTo("mrtpredundancy")>Redundancy</a>
+                        </li>
+                        <li><i class="menu-icon ti-arrow-circle-right"></i>
+                            <a href="#" onclick=jumpTo("mrtpreliable")>Reliable</a>
+                        </li>
+                        <li><i class="menu-icon ti-arrow-circle-right"></i>
+                            <a href="#" onclick=jumpTo("mrtpredundancynoack")>RedundancyNoAck</a>
+                        </li>
+                        <li><i class="menu-icon ti-arrow-circle-right"></i>
+                            <a href="#" onclick=jumpTo("mrtpunsequenced")>UnSequenced</a>
+                        </li>
+                    </ul>
+                </li>
+                <li>
+                    <a href="#" onclick=jumpTo("tcp")> <i class="menu-icon ti-arrow-circle-right"></i>TCP</a>
+                </li>
+                <li>
+                    <a href="#" onclick=jumpTo("kcp")> <i class="menu-icon ti-arrow-circle-right"></i>KCP</a>
+                </li>
+                <li>
+                    <a href="#" onclick=jumpTo("enet")> <i class="menu-icon ti-arrow-circle-right"></i>ENet</a>
+                </li>
+            </ul>
+        </div><!-- /.navbar-collapse -->
+    </nav>
+</aside><!-- /#left-panel -->
+
+<!-- Left Panel -->
+
+<!-- Right Panel -->
+
+<div id="right-panel" class="right-panel">
+
+    <div class="breadcrumbs">
+        <div class="col-sm-4">
+            <div class="page-header float-left">
+                <div class="page-title">
+                    <h1 id="head-dash-board">Dashboard</h1>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-8">
+            <div class="page-header float-right">
+                <div class="page-title">
+                    <ol class="breadcrumb text-right">
+                        <li><a href="#">NetWork Test</a></li>
+                        <li><a href="#">MRtp</a></li>
+                        <li class="active">Redundancy</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="content mt-3">
+        <div class="animated fadeIn">
+            <div class="row">
+                <div class="col-lg-4"><h5 class="mb-3" id="upstreamLoss-header"></h5></div>
+                <div class="col-lg-4"><h5 class="mb-3" id="upstreamLatency-header"></h5></div>
+                <div class="col-lg-4"><h5 class="mb-3" id="upstreamDeviation-header"></h5></div>
+
+                <div class="col-lg-4"><h5 class="mb-3" id="downstreamLoss-header"></h5></div>
+                <div class="col-lg-4"><h5 class="mb-3" id="downstreamLatency-header"></h5></div>
+                <div class="col-lg-4"><h5 class="mb-3" id="downstreamDeviation-header"></h5></div>
+
+                <div class="col-lg-4"><h5 class="mb-3" id="averageRtt-header"></h5></div>
+                <div class="col-lg-4"><h5 class="mb-3" id="maxRtt-header"></h5></div>
+
+                <div class="col-lg-4"></div>
+
+                <div class="col-lg-4"><h5 class="mb-3" id="needSendData-header"></h5></div>
+                <div class="col-lg-4"><h5 class="mb-3" id="totalSendData-header"></h5></div>
+                <div class="col-lg-4"><h5 class="mb-3" id="totalReceiveData-header"></h5></div>
+
+
+                <div class="col-lg-12">
+                    <div class="card">
+                        <div class="card-body">
+                            <h4 class="mb-3">Total Latency </h4>
+                            <canvas id="allDataBarChart"></canvas>
+                        </div>
+                    </div>
+                </div><!-- /# column -->
+
+                <div class="col-lg-12">
+                    <div class="card">
+                        <div class="card-body">
+                            <h4 class="mb-3">Latency Statics </h4>
+                            <canvas id="staticsDataBarChart"></canvas>
+                        </div>
+                    </div>
+                </div><!-- /# column -->
+
+            </div>
+
+        </div><!-- .animated -->
+    </div><!-- .content -->
+
+
+</div><!-- /#right-panel -->
+
+<!-- Right Panel -->
+
+<script src="assets/js/vendor/jquery-2.1.4.min.js"></script>
+<script src="assets/js/popper.min.js"></script>
+<script src="assets/js/plugins.js"></script>
+<script src="assets/js/main.js"></script>
+<!--  Chart js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.4.0/Chart.min.js"></script>
+<script src="assets/js/lib/chart-js/Chart.bundle.js"></script>
+<script src="javascripts/chart-page.js"></script>
+
+</body>
+</html>
