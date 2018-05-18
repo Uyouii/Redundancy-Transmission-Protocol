@@ -29,7 +29,8 @@ const mrtpRedudancySchema = new mongoose.Schema(
         totalSendData  :  {type:String},
         averageRtt : {type:String},
         upstreamDeviation: {type: String},
-        downstreamDeviation: {type:String}
+        downstreamDeviation: {type:String},
+        sendSlap : {type:String},
     },
     {
         collection:"mrtp_redundancy_test"
@@ -59,7 +60,8 @@ const mrtpReliableSchema = new mongoose.Schema(
         totalSendData  :  {type:String},
         averageRtt : {type:String},
         upstreamDeviation: {type: String},
-        downstreamDeviation: {type:String}
+        downstreamDeviation: {type:String},
+        sendSlap : {type:String},
     },
     {
         collection:"mrtp_reliable_test"
@@ -88,7 +90,8 @@ const mrtpUnsequencedSchema = new mongoose.Schema(
         totalSendData  :  {type:String},
         averageRtt : {type:String},
         upstreamDeviation: {type: String},
-        downstreamDeviation: {type:String}
+        downstreamDeviation: {type:String},
+        sendSlap : {type:String},
     },
     {
         collection:"mrtp_unsequenced_test"
@@ -117,7 +120,8 @@ const mrtpRedundancyNoackSchema = new mongoose.Schema(
         totalSendData  :  {type:String},
         averageRtt : {type:String},
         upstreamDeviation: {type: String},
-        downstreamDeviation: {type:String}
+        downstreamDeviation: {type:String},
+        sendSlap : {type:String},
     },
     {
         collection:"mrtp_redundancy_noack_test"
@@ -146,7 +150,8 @@ const kcpSchema = new mongoose.Schema(
         totalSendData  :  {type:String},
         averageRtt : {type:String},
         upstreamDeviation: {type: String},
-        downstreamDeviation: {type:String}
+        downstreamDeviation: {type:String},
+        sendSlap : {type:String},
     },
     {
         collection:"kcp_test"
@@ -175,7 +180,8 @@ const tcpSchema = new mongoose.Schema(
         totalSendData  :  {type:String},
         averageRtt : {type:String},
         upstreamDeviation: {type: String},
-        downstreamDeviation: {type:String}
+        downstreamDeviation: {type:String},
+        sendSlap : {type:String},
     },
     {
         collection:"tcp_test"
@@ -204,7 +210,8 @@ const enetSchema = new mongoose.Schema(
         totalSendData  :  {type:String},
         averageRtt : {type:String},
         upstreamDeviation: {type: String},
-        downstreamDeviation: {type:String}
+        downstreamDeviation: {type:String},
+        sendSlap : {type:String},
     },
     {
         collection:"enet_test"

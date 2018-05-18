@@ -2,7 +2,8 @@
 #include <cstdio>
 #include "enet/enet.h"
 
-#define HOSTADDRESS "10.242.3.221"
+//#define HOSTADDRESS "10.242.3.221"
+#define HOSTADDRESS "192.168.31.233"
 //#define HOSTADDRESS "127.0.0.1"
 
 ENetHost* createServer() {

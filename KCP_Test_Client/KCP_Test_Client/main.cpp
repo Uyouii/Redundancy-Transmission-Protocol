@@ -15,8 +15,8 @@
 #include "ikcp.h"
 
 #define SERVERPORT 6666
-#define SERVERADDR "10.242.3.221"
-//#define SERVERADDR "192.168.31.233"
+//#define SERVERADDR "10.242.3.221"
+#define SERVERADDR "192.168.31.233"
 
 #define GENERATECSVFILE
 
@@ -112,6 +112,7 @@ int main() {
 	IUINT32 index = 0, next = 0;
 	const int PACKELENGTH = 80;
 	const int TOTALPACKET = 1000;
+	const int sendSlap = 30;
 	IINT64 sumrtt = 0;
 	int count = 0, maxrtt = 0;
 
@@ -137,7 +138,7 @@ int main() {
 
 		ikcp_update(kcp_client, current);
 
-		for (; current >= slap; slap += 30) {
+		for (; current >= slap; slap += sendSlap) {
 			((IUINT32*)buffer)[0] = index++;
 			((IUINT32*)buffer)[1] = current;
 
@@ -204,13 +205,14 @@ int main() {
 	out_file << "totalReceiveData, " << totalReceiveData << std::endl;
 	out_file << "totalSendUdpPacket, " << totalSendPacket << std::endl;
 	out_file << "totalReceiveUdpPacket, " << totalReceivePacket << std::endl;
-	out_file << "upstreamLoss, 5" << std::endl;
+	out_file << "upstreamLoss, 1.25" << std::endl;
 	out_file << "upstreamLatency, 10" << std::endl;
 	out_file << "upstreamDeviation, 8" << std::endl;
-	out_file << "downstreamLoss, 5" << std::endl;
+	out_file << "downstreamLoss, 1.25" << std::endl;
 	out_file << "downstreamLatency, 10" << std::endl;
 	out_file << "downstreamDeviation, 8" << std::endl;
 	out_file << "timeStamp, " << (size_t)timeGetTime() << std::endl;
+	out_file << "sendSlap, " << sendSlap << std::endl;
 	for (int i = 0; i < rttData.size(); i++) {
 		out_file << i + 1 << ", " << rttData[i][1] << std::endl;
 	}

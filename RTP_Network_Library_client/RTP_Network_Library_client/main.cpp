@@ -10,10 +10,10 @@
 #include<vector>
 
 //#define SERVERADDRESS "10.240.66.57"
-//#define SERVERADDRESS "192.168.31.233"
+#define SERVERADDRESS "192.168.31.233"
 //#define SERVERADDRESS "192.168.1.6"
 //#define SERVERADDRESS "192.168.31.108"
-#define SERVERADDRESS "10.242.3.221"
+//#define SERVERADDRESS "10.242.3.221"
 //#define SERVERADDRESS "127.0.0.1"
 #define GENERATECSVFILE
 #define PACKETSTYLE MRTP_PACKET_FLAG_UNSEQUENCED
@@ -68,6 +68,7 @@ int main(int argc, char ** argv) {
 	bool hasconnected = false;
 	const int TOTALPACKET = 1000;
 	const int PACKELENGTH = 80;
+	const int sendSlap = 30;
 	mrtp_uint32 packetNum = 1;
 	mrtp_uint32 currentTime = (mrtp_uint32)timeGetTime();
 	mrtp_uint32 slap = currentTime + 1000;
@@ -132,7 +133,7 @@ int main(int argc, char ** argv) {
 		if (hasconnected && !disconnected && packetNum <= TOTALPACKET && currentTime >= slap) {
 			((mrtp_uint32*)buffer)[0] = packetNum;
 			((mrtp_uint32*)buffer)[1] = currentTime;
-			slap += 30;
+			slap += sendSlap;
 			packetNum++;
 			MRtpPacket * packet = mrtp_packet_create(buffer, PACKELENGTH, PACKETSTYLE);
 			mrtp_peer_send(peer, packet);
@@ -154,13 +155,14 @@ int main(int argc, char ** argv) {
 	out_file << "totalReceiveData, " << client->totalReceivedData << std::endl;
 	out_file << "totalSendUdpPacket, " << client->totalSentPackets << std::endl;
 	out_file << "totalReceiveUdpPacket, " << client->totalReceivedPackets << std::endl;
-	out_file << "upstreamLoss, 5" << std::endl;
+	out_file << "upstreamLoss, 3.75" << std::endl;
 	out_file << "upstreamLatency, 10" << std::endl;
 	out_file << "upstreamDeviation, 8" << std::endl;
-	out_file << "downstreamLoss, 5" << std::endl;
+	out_file << "downstreamLoss, 3.75" << std::endl;
 	out_file << "downstreamLatency, 10" << std::endl;
 	out_file << "downstreamDeviation, 8" << std::endl;
 	out_file << "timeStamp, " << (size_t)timeGetTime() << std::endl;
+	out_file << "sendSlap, " << sendSlap << std::endl;
 	std::string packetStyle;
 	switch (PACKETSTYLE)
 	{

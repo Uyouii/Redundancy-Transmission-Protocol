@@ -72,6 +72,10 @@ MRtpHost * mrtp_host_create(const MRtpAddress * address, size_t peerCount,
 	host->redundancyNum = MRTP_PROTOCOL_DEFAULT_REDUNDANCY_NUM;
 	host->openQuickRetransmit = 0;
 
+#ifdef PRINTLOG
+	host->logFile = fopen("log.txt", "w");
+#endif
+
 	mrtp_list_clear(&host->dispatchQueue);
 
 	// initilize the peers array
@@ -191,6 +195,9 @@ void mrtp_host_destroy(MRtpHost * host) {
 		mrtp_peer_reset(currentPeer);
 		mrtp_free(currentPeer->channels);
 	}
+#ifdef PRINTLOG
+	fclose(host->logFile);
+#endif // PRINTLOG
 
 	mrtp_free(host->peers);
 	mrtp_free(host);
@@ -307,10 +314,10 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 #ifdef FLOWCONTROLDEBUG
 	for (int i = 0; i < host->peerCount; i++) {
 		peer = &host->peers[i];
-		printf("peer [%d]: packetThrottleLimit [%d], packetThrottle [%d], incomingBandwidth [%d]\n",
+		fprintf(host->logFile, "peer [%d]: packetThrottleLimit [%d], packetThrottle [%d], incomingBandwidth [%d]\n",
 			i, peer->packetThrottleLimit, peer->packetThrottle, peer->incomingBandwidth);
 	}
-	printf("\n");
+	fprintf(host->logFile, "\n");
 #endif // FLOWCONTROLDEBUG
 
 

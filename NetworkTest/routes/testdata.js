@@ -40,6 +40,8 @@ router.post('/collectionlist', async (ctx, next) => {
             'downstreamLoss': data['downstreamLoss'],
             'downstreamLatency': data['downstreamLatency'],
             'downstreamDeviation': data['downstreamDeviation'],
+            'sendSlap': data['sendSlap'],
+            'averageRtt': data['averageRtt'],
         };
         result.push(returnData);
     }

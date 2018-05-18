@@ -69,12 +69,14 @@ function setTable(data) {
         table.row.add([
             line['_id'],
             line['library'],
+            line['sendSlap'] + 'ms',
             line['upstreamLoss'] + '%',
             line['upstreamLatency'] + 'ms',
             line['upstreamDeviation'] + 'ms',
             line['downstreamLoss'] + '%',
             line['downstreamLatency'] + 'ms',
-            line['downstreamDeviation'] + 'ms'
+            line['downstreamDeviation'] + 'ms',
+            line['averageRtt'] + 'ms',
         ]).draw();
     }
 }

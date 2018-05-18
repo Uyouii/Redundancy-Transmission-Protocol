@@ -2,8 +2,8 @@
 #include <cstdio>
 #include "mrtp.h"
 
-#define HOSTADDRESS "10.242.3.221"
-//#define HOSTADDRESS "192.168.31.233"
+//#define HOSTADDRESS "10.242.3.221"
+#define HOSTADDRESS "192.168.31.233"
 //#define HOSTADDRESS "192.168.1.6"
 //#define HOSTADDRESS "192.168.31.108"
 //#define HOSTADDRESS "127.0.0.1"

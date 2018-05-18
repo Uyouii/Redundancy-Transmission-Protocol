@@ -9,8 +9,9 @@
 #include<string>
 
 //#define SERVERADDRESS "10.240.66.57"
-#define SERVERADDRESS "10.242.3.221"
+//#define SERVERADDRESS "10.242.3.221"
 //#define SERVERADDRESS "127.0.0.1"
+#define SERVERADDRESS "192.168.31.233"
 #define GENERATECSVFILE
 
 ENetHost* createClient() {
@@ -63,6 +64,7 @@ int main(int argc, char ** argv) {
 	bool hasconnected = false;
 	const int TOTALPACKET = 1000;
 	const int PACKELENGTH = 80;
+	const int sendSlap = 30;
 	enet_uint32 packetNum = 1;
 	enet_uint32 currentTime = (enet_uint32)timeGetTime();
 	enet_uint32 slap = currentTime + 1000;
@@ -126,7 +128,7 @@ int main(int argc, char ** argv) {
 		if (hasconnected && !disconnected && packetNum <= TOTALPACKET && currentTime >= slap) {
 			((enet_uint32*)buffer)[0] = packetNum;
 			((enet_uint32*)buffer)[1] = currentTime;
-			slap += 30;
+			slap += sendSlap;
 			packetNum++;
 			ENetPacket * packet = enet_packet_create(buffer, PACKELENGTH, ENET_PACKET_FLAG_RELIABLE);
 			enet_peer_send(peer, 0,packet);
@@ -148,14 +150,14 @@ int main(int argc, char ** argv) {
 	out_file << "totalReceiveData, " << client->totalReceivedData << std::endl;
 	out_file << "totalSendUdpPacket, " << client->totalSentPackets << std::endl;
 	out_file << "totalReceiveUdpPacket, " << client->totalReceivedPackets << std::endl;
-	out_file << "upstreamLoss, 5" << std::endl;
+	out_file << "upstreamLoss, 0" << std::endl;
 	out_file << "upstreamLatency, 10" << std::endl;
 	out_file << "upstreamDeviation, 8" << std::endl;
-	out_file << "downstreamLoss, 5" << std::endl;
+	out_file << "downstreamLoss, 0" << std::endl;
 	out_file << "downstreamLatency, 10" << std::endl;
 	out_file << "downstreamDeviation, 8" << std::endl;
 	out_file << "timeStamp, " << (size_t)timeGetTime() << std::endl;
-	
+	out_file << "sendSlap, " << sendSlap << std::endl;
 	for (int i = 0; i < rttData.size(); i++) {
 		out_file << i + 1 << ", " << rttData[i][1] << std::endl;
 	}

@@ -69,7 +69,7 @@ let staticsDataChart = new Chart( staticsDataChartCtx, {
         labels: [ ],
         datasets: [
             {
-                label: "latency / ms",
+                label: "latency / n",
                 data: [ ],
                 borderColor: "rgba(0, 123, 255, 0.9)",
                 borderWidth: "0",
@@ -101,6 +101,7 @@ let staticsDataChart = new Chart( staticsDataChartCtx, {
 window.onload = function () {
     let dataId = getCookie('dataId');
     let collection = getCookie('collection');
+    setDashBoard(collection, dataId);
 
     jQuery.post("/testdata/testdata",
         {
@@ -128,10 +129,16 @@ function setHeaderLabel(data) {
 
     document.getElementById('averageRtt-header').innerHTML ='averageRtt: ' + data['averageRtt'] + 'ms';
     document.getElementById('maxRtt-header').innerHTML ='maxRtt: ' + data['maxRtt'] + 'ms';
+    document.getElementById('sendSlap-header').innerHTML ='sendSlap: ' + data['sendSlap'] + 'ms';
 
     document.getElementById('needSendData-header').innerHTML ='needSendData: ' + data['needSendData'] + 'bytes';
     document.getElementById('totalSendData-header').innerHTML ='totalSendData: ' + data['totalSendData'] + 'bytes';
     document.getElementById('totalReceiveData-header').innerHTML ='totalReceiveData: ' + data['totalReceiveData'] + 'bytes';
+
+    document.getElementById('totalNumber-header').innerHTML ='totalNumber: ' + data['totalNumber'];
+    document.getElementById('totalReceive-header').innerHTML ='totalReceive: ' + data['totalReceive'];
+
+
 }
 
 function addStaticsChartData(chart, testData) {
@@ -179,6 +186,33 @@ function addAllDataChartData(chart, testData) {
     }
 
     chart.update();
+}
+
+
+function setDashBoard(collection, dataId) {
+    let result;
+    if(collection === 'mrtpredundancy') {
+        result = 'MRtp Redundancy Test Data';
+    }
+    else if(collection === 'mrtpreliable') {
+        result = 'MRtp Reliable Test Data';
+    }
+    else if(collection === 'mrtpredundancynoack') {
+        result = 'MRtp Redundancy No Ack Test Data';
+    }
+    else if(collection === 'mrtpunsequenced') {
+        result = 'MRtp Unsequenced Test Data';
+    }
+    else if(collection === 'tcp') {
+        result = 'TCP Test Data';
+    }
+    else if(collection === 'kcp') {
+        result = 'KCP Test Data';
+    }
+    else if(collection === 'enet') {
+        result = 'ENet Test Data';
+    }
+    document.getElementById('head-dash-board').innerText = result + ' of ID: ' + dataId;
 }
 
 

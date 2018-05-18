@@ -1,12 +1,14 @@
-﻿#ifndef _MRTP_H_
+﻿
+#ifndef _MRTP_H_
 #define _MRTP_H_
 
 // for debug
-//#define SENDANDRECEIVE
+#define SENDANDRECEIVE
 //#define FLOWCONTROLDEBUG
 //#define RELIABLEWINDOWDEBUG
-//#define PACKETLOSSDEBUG
+#define PACKETLOSSDEBUG
 //#define SETPACKETLOSS 10
+//#define PRINTLOG
 
 
 #ifdef __cplusplus
@@ -15,6 +17,7 @@ extern "C"
 #endif
 
 #include <stdlib.h>
+#include <stdio.h>
 
 #ifdef _WIN32
 #include "win32.h"
@@ -320,6 +323,9 @@ extern "C"
 		mrtp_uint8 redundancyNum;
 		mrtp_uint8 openQuickRetransmit;		// open the quick retransmit
 		MRtpCompressor compressor;
+#ifdef PRINTLOG
+		FILE* logFile;
+#endif // PRINTLOG
 	} MRtpHost;
 
 

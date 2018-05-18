@@ -5,9 +5,12 @@
 #include <winsock2.h>
 #include <iostream>
 #include <vector>
+#include <fstream>
 
 #define SERVERPORT 6666
-#define SERVERADDR "10.242.3.221"
+//#define SERVERADDR "10.242.3.221"
+#define SERVERADDR "192.168.31.233"
+#define GENERATECSVFILE
 
 int main() {
 
@@ -40,8 +43,9 @@ int main() {
 	bool isconnect = true;
 	timeval waittime;
 
-	const int TOTALPACKET = 2000;
+	const int TOTALPACKET = 1000;
 	const int PACKELENGTH = 80;
+	const int sendSlap = 30;
 	char * sendBuffer = (char *)malloc(PACKELENGTH);
 	memset(sendBuffer, 'a', PACKELENGTH);
 	char buffer[1024];
@@ -49,6 +53,13 @@ int main() {
 	size_t currentTime = (size_t)timeGetTime();
 	size_t slap = currentTime + 30;
 	size_t totalRTT = 0, maxRTT = 0;
+#ifdef GENERATECSVFILE
+	std::ofstream out_file("tcp.csv");
+	std::vector<std::vector<int>> rttData(TOTALPACKET, std::vector<int>(2, 0));
+	for (int i = 1; i <= rttData.size(); i++) {
+		rttData[i - 1][0] = i;
+	}
+#endif // GENERATECSVFILE
 
 	std::vector<char> recvBuffer;
 
@@ -63,7 +74,7 @@ int main() {
 		if (isconnect && packetNum <= TOTALPACKET && currentTime >= slap) {
 			((size_t*)sendBuffer)[0] = packetNum;
 			((size_t*)sendBuffer)[1] = currentTime;
-			slap += 30;
+			slap += sendSlap;
 			++packetNum;
 			send(sockfd, sendBuffer, TOTALPACKET, 0);
 		}
@@ -94,6 +105,10 @@ int main() {
 						totalRTT += rtt;
 						if (rtt > maxRTT)
 							maxRTT = rtt;
+#ifdef GENERATECSVFILE
+						//out_file << seqNumber << ", " << rtt << std::endl;
+						rttData[seqNumber - 1][1] = rtt;
+#endif
 						if (seqNumber >= TOTALPACKET) {
 							std::cout << "Total rtt: " << totalRTT <<
 								" average rtt: " << totalRTT * 1.0 / TOTALPACKET <<
@@ -109,6 +124,33 @@ int main() {
 			}
 		}
 	}
+
+#ifdef GENERATECSVFILE
+	out_file << "library, " << "tcp" << std::endl;
+	out_file << "totalNumber, " << TOTALPACKET << std::endl;
+	out_file << "totalReceive, " << TOTALPACKET << std::endl;
+	out_file << "packetLength, " << PACKELENGTH << std::endl;
+	out_file << "totalRtt, " << totalRTT << std::endl;
+	out_file << "averageRtt, " << totalRTT * 1.0 / TOTALPACKET << std::endl;
+	out_file << "maxRtt, " << maxRTT << std::endl;
+	out_file << "needSendData, " << TOTALPACKET * PACKELENGTH << std::endl;
+	//out_file << "totalSendData, " << client->totalSentData << std::endl;
+	//out_file << "totalReceiveData, " << client->totalReceivedData << std::endl;
+	//out_file << "totalSendUdpPacket, " << client->totalSentPackets << std::endl;
+	//out_file << "totalReceiveUdpPacket, " << client->totalReceivedPackets << std::endl;
+	out_file << "upstreamLoss, 0" << std::endl;
+	out_file << "upstreamLatency, 10" << std::endl;
+	out_file << "upstreamDeviation, 8" << std::endl;
+	out_file << "downstreamLoss, 0" << std::endl;
+	out_file << "downstreamLatency, 10" << std::endl;
+	out_file << "downstreamDeviation, 8" << std::endl;
+	out_file << "timeStamp, " << (size_t)timeGetTime() << std::endl;
+	out_file << "sendSlap, " << sendSlap << std::endl;
+	for (int i = 0; i < rttData.size(); i++) {
+		out_file << i + 1 << ", " << rttData[i][1] << std::endl;
+	}
+	out_file.close();
+#endif
 
 	closesocket(sockfd);
 	WSACleanup();
