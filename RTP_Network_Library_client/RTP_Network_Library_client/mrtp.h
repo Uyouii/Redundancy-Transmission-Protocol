@@ -1,11 +1,12 @@
-﻿#ifndef _MRTP_H_
+﻿
+#ifndef _MRTP_H_
 #define _MRTP_H_
 
 // for debug
-#define SENDANDRECEIVE
+//#define SENDANDRECEIVE
 //#define FLOWCONTROLDEBUG
 //#define RELIABLEWINDOWDEBUG
-#define PACKETLOSSDEBUG
+//#define PACKETLOSSDEBUG
 //#define SETPACKETLOSS 10
 //#define PRINTLOG
 
@@ -156,7 +157,7 @@ extern "C"
 		MRTP_PEER_PACKET_THROTTLE_COUNTER = 7,
 		MRTP_PEER_PACKET_THROTTLE_ACCELERATION = 2,
 		MRTP_PEER_PACKET_THROTTLE_DECELERATION = 2,
-		MRTP_PEER_PACKET_THROTTLE_INTERVAL = 5000,
+		MRTP_PEER_PACKET_THROTTLE_INTERVAL = 3000,
 		MRTP_PEER_PACKET_LOSS_SCALE = (1 << 16),
 		MRTP_PEER_PACKET_LOSS_INTERVAL = 10000,
 		MRTP_PEER_WINDOW_SIZE_SCALE = 64 * 1024,
@@ -203,7 +204,7 @@ extern "C"
 		mrtp_uint8 outgoingSessionID;
 		mrtp_uint8 incomingSessionID;
 		MRtpAddress address;            // Internet address of the peer 
-		void * data;					// Application private data, may be freely modified 
+		void * data;
 		MRtpPeerState state;
 		MRtpChannel * channels;
 		size_t channelCount;			// Number of channels allocated for communication with peer 
@@ -254,7 +255,6 @@ extern "C"
 		size_t sentRedundancyLastTimeSize;
 		size_t sentRedundancyThisTimeSize;
 		int needsDispatch;
-		mrtp_uint32 eventData;
 		size_t totalWaitingData;
 		size_t redundancyNum;
 		size_t currentRedundancyNoAckBufferNum;
@@ -340,7 +340,6 @@ extern "C"
 		MRtpEventType        type;      // type of the event 
 		MRtpPeer *           peer;      // peer that generated a connect, disconnect or receive event 
 		mrtp_uint8           channelID; // channel on the peer that generated the event, if appropriate 
-		mrtp_uint32          data;      // data associated with the event, if appropriate 
 		MRtpPacket *         packet;    // packet associated with the event, if appropriate 
 	} MRtpEvent;
 

@@ -54,9 +54,9 @@ typedef enum _MRtpProtocolCommand {
 } MRtpProtocolCommand;
 
 typedef enum _MRtpProtocolFlag {
-	MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE = (1 << 7),
-	MRTP_PROTOCOL_COMMAND_FLAG_REDUNDANCY_ACKNOWLEDGE = (1 << 6),
-	MRTP_PROTOCOL_COMMAND_FLAG_UNSEQUENCED = (1 << 5),
+	MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE = (1 << 0),
+	MRTP_PROTOCOL_COMMAND_FLAG_REDUNDANCY_ACKNOWLEDGE = (1 << 1),
+	MRTP_PROTOCOL_COMMAND_FLAG_UNSEQUENCED = (1 << 2),
 
 	MRTP_PROTOCOL_HEADER_SESSION_MASK = (3 << 12),
 	MRTP_PROTOCOL_HEADER_SESSION_SHIFT = 12,
@@ -85,7 +85,7 @@ typedef struct _MRtpProtocolHeader {
 
 typedef struct _MRtpProtocolCommandHeader {
 	mrtp_uint8 command;
-	//mrtp_uint8 channelID;
+	mrtp_uint8 flag;
 	mrtp_uint16 sequenceNumber;
 } MRTP_PACKED MRtpProtocolCommandHeader;
 
@@ -106,9 +106,6 @@ typedef struct _MRtpProtocolConnect {
 	mrtp_uint32 windowSize;
 	mrtp_uint32 incomingBandwidth;
 	mrtp_uint32 outgoingBandwidth;
-	mrtp_uint32 packetThrottleInterval;
-	mrtp_uint32 packetThrottleAcceleration;
-	mrtp_uint32 packetThrottleDeceleration;
 	mrtp_uint32 connectID;
 } MRTP_PACKED MRtpProtocolConnect;
 
@@ -121,9 +118,6 @@ typedef struct _MRtpProtocolVerifyConnect {
 	mrtp_uint32 windowSize;
 	mrtp_uint32 incomingBandwidth;
 	mrtp_uint32 outgoingBandwidth;
-	mrtp_uint32 packetThrottleInterval;
-	mrtp_uint32 packetThrottleAcceleration;
-	mrtp_uint32 packetThrottleDeceleration;
 	mrtp_uint32 connectID;
 } MRTP_PACKED MRtpProtocolVerifyConnect;
 

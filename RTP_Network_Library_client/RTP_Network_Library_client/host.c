@@ -145,7 +145,8 @@ MRtpPeer *mrtp_host_connect(MRtpHost * host, const MRtpAddress * address) {
 	else if (currentPeer->windowSize > MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE)
 		currentPeer->windowSize = MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE;
 
-	command.header.command = MRTP_PROTOCOL_COMMAND_CONNECT | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
+	command.header.command = MRTP_PROTOCOL_COMMAND_CONNECT;
+	command.header.flag = MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
 	command.connect.outgoingPeerID = MRTP_HOST_TO_NET_16(currentPeer->incomingPeerID);
 	command.connect.incomingSessionID = currentPeer->incomingSessionID;
 	command.connect.outgoingSessionID = currentPeer->outgoingSessionID;
@@ -153,9 +154,6 @@ MRtpPeer *mrtp_host_connect(MRtpHost * host, const MRtpAddress * address) {
 	command.connect.windowSize = MRTP_HOST_TO_NET_32(currentPeer->windowSize);
 	command.connect.incomingBandwidth = MRTP_HOST_TO_NET_32(host->incomingBandwidth);
 	command.connect.outgoingBandwidth = MRTP_HOST_TO_NET_32(host->outgoingBandwidth);
-	command.connect.packetThrottleInterval = MRTP_HOST_TO_NET_32(currentPeer->packetThrottleInterval);
-	command.connect.packetThrottleAcceleration = MRTP_HOST_TO_NET_32(currentPeer->packetThrottleAcceleration);
-	command.connect.packetThrottleDeceleration = MRTP_HOST_TO_NET_32(currentPeer->packetThrottleDeceleration);
 	command.connect.connectID = currentPeer->connectID;
 
 	mrtp_peer_queue_outgoing_command(currentPeer, &command, NULL, 0, 0);
@@ -362,7 +360,8 @@ void mrtp_host_bandwidth_throttle(MRtpHost * host) {
 				continue;
 
 			// send the bandwidth limit command to the connected peer
-			command.header.command = MRTP_PROTOCOL_COMMAND_BANDWIDTH_LIMIT | MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
+			command.header.command = MRTP_PROTOCOL_COMMAND_BANDWIDTH_LIMIT;
+			command.header.flag = MRTP_PROTOCOL_COMMAND_FLAG_ACKNOWLEDGE;
 			command.bandwidthLimit.outgoingBandwidth = MRTP_HOST_TO_NET_32(host->outgoingBandwidth);
 
 			// to prevent peer send data larger than host receive ability,

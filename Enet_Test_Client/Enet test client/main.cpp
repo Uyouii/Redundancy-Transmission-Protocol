@@ -150,10 +150,10 @@ int main(int argc, char ** argv) {
 	out_file << "totalReceiveData, " << client->totalReceivedData << std::endl;
 	out_file << "totalSendUdpPacket, " << client->totalSentPackets << std::endl;
 	out_file << "totalReceiveUdpPacket, " << client->totalReceivedPackets << std::endl;
-	out_file << "upstreamLoss, 0" << std::endl;
+	out_file << "upstreamLoss, 10" << std::endl;
 	out_file << "upstreamLatency, 10" << std::endl;
 	out_file << "upstreamDeviation, 8" << std::endl;
-	out_file << "downstreamLoss, 0" << std::endl;
+	out_file << "downstreamLoss, 10" << std::endl;
 	out_file << "downstreamLatency, 10" << std::endl;
 	out_file << "downstreamDeviation, 8" << std::endl;
 	out_file << "timeStamp, " << (size_t)timeGetTime() << std::endl;

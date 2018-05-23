@@ -137,7 +137,7 @@ function setHeaderLabel(data) {
 
     document.getElementById('totalNumber-header').innerHTML ='totalNumber: ' + data['totalNumber'];
     document.getElementById('totalReceive-header').innerHTML ='totalReceive: ' + data['totalReceive'];
-
+    document.getElementById('receiveRate-header').innerHTML ='receiveRate: ' + 100 * parseInt(data['totalReceive']) / parseInt(data['totalNumber']) + '%';
 
 }
 

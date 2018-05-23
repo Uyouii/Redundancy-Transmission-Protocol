@@ -16,12 +16,7 @@ MRtpHost* createServer() {
 	mrtp_address_set_host(&address, HOSTADDRESS);
 	address.port = 1234;
 
-	server = mrtp_host_create(
-		&address /* the address to bind the server host to */,
-		8      /* allow up to 32 clients and/or outgoing connections */,
-		0      /* assume any amount of incoming bandwidth */,
-		0     /* assume any amount of outgoing bandwidth */
-	);
+	server = mrtp_host_create( &address, 8, 0, 0 );
 
 	if (server == NULL) {
 		printf("An error occurred while initializing Server.\n");
@@ -48,7 +43,7 @@ int main(int argc, char ** argv) {
 	MRtpEvent event;
 	/* Wait up to 1000 milliseconds for an event. */
 	while (true) {
-		while (mrtp_host_service(server, &event, 0) >= 1) {
+		while (mrtp_host_service(server, &event, 1) >= 1) {
 			switch (event.type) {
 			case MRTP_EVENT_TYPE_CONNECT:
 				printf("A new client connected from %x:%u.\n",
@@ -56,7 +51,7 @@ int main(int argc, char ** argv) {
 					event.peer->address.port);
 				break;
 			case MRTP_EVENT_TYPE_RECEIVE:
-				printf("Receive a Pakcet of length: %d. Sequence Number: %d, TimeStamp: %d\n",
+				printf("recv len: %d. seq num: %d, timestamp: %d\n",
 					event.packet->dataLength,
 					*((mrtp_uint32*)event.packet->data),
 					*((mrtp_uint32*)(event.packet->data + sizeof(mrtp_uint32))));
@@ -71,7 +66,6 @@ int main(int argc, char ** argv) {
 				break;
 			}
 		}
-		Sleep(1);
 	}
 	
 	mrtp_host_destroy(server);

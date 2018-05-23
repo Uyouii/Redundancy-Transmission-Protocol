@@ -16,16 +16,11 @@
 //#define SERVERADDRESS "10.242.3.221"
 //#define SERVERADDRESS "127.0.0.1"
 #define GENERATECSVFILE
-#define PACKETSTYLE MRTP_PACKET_FLAG_UNSEQUENCED
+#define PACKETSTYLE MRTP_PACKET_FLAG_RELIABLE
 
 MRtpHost* createClient() {
 	MRtpHost * client;
-	client = mrtp_host_create(
-		NULL /* create a client host */,
-		1 /* only allow 1 outgoing connection */,
-		0 /* 56K modem with 56 Kbps downstream bandwidth */,
-		0 /* 56K modem with 14 Kbps upstream bandwidth */
-	);
+	client = mrtp_host_create( NULL, 1, 0, 0 );
 
 	if (client == NULL) {
 		printf("An error occurred while trying to create an MRtp client host.\n");
@@ -57,7 +52,6 @@ int main(int argc, char ** argv) {
 	/* Initiate the connection, allocating the two channels 0 and 1. */
 	peer = mrtp_host_connect(client, &address);
 
-
 	if (peer == NULL) {
 		printf("No available peers for initiating an MRtp connection.\n");
 		system("pause");
@@ -86,6 +80,14 @@ int main(int argc, char ** argv) {
 	while (true) {
 
 		currentTime = (mrtp_uint32)timeGetTime();
+		if (hasconnected && !disconnected && packetNum <= TOTALPACKET && currentTime >= slap) {
+			((mrtp_uint32*)buffer)[0] = packetNum;
+			((mrtp_uint32*)buffer)[1] = currentTime;
+			slap += sendSlap;
+			packetNum++;
+			MRtpPacket * packet = mrtp_packet_create(buffer, PACKELENGTH, PACKETSTYLE);
+			mrtp_peer_send(peer, packet);
+		}
 
 		while (mrtp_host_service(client, &event, 0) >= 1) {
 
@@ -104,7 +106,7 @@ int main(int argc, char ** argv) {
 				mrtp_uint32 sendTimeStamp = *((mrtp_uint32*)(event.packet->data + sizeof(mrtp_uint32)));
 				
 				mrtp_uint32 rtt = currentTime - sendTimeStamp;
-				printf("Receive a Pakcet of length: %d. Sequence Number: %d, TimeStamp: %d rtt: %dms\n",
+				printf("recv len: %d. seq num: %d, timestamp: %d rtt: %dms\n",
 					event.packet->dataLength, seqNumber, sendTimeStamp, rtt);
 #ifdef GENERATECSVFILE
 				//out_file << seqNumber << ", " << rtt << std::endl;
@@ -129,16 +131,6 @@ int main(int argc, char ** argv) {
 		}
 		if (disconnected)
 			break;
-
-		if (hasconnected && !disconnected && packetNum <= TOTALPACKET && currentTime >= slap) {
-			((mrtp_uint32*)buffer)[0] = packetNum;
-			((mrtp_uint32*)buffer)[1] = currentTime;
-			slap += sendSlap;
-			packetNum++;
-			MRtpPacket * packet = mrtp_packet_create(buffer, PACKELENGTH, PACKETSTYLE);
-			mrtp_peer_send(peer, packet);
-		}
-
 		Sleep(1);
 	}
 	printf("totalData: %d totalPackets: %d \n", client->totalSentData, client->totalSentPackets);
@@ -155,10 +147,10 @@ int main(int argc, char ** argv) {
 	out_file << "totalReceiveData, " << client->totalReceivedData << std::endl;
 	out_file << "totalSendUdpPacket, " << client->totalSentPackets << std::endl;
 	out_file << "totalReceiveUdpPacket, " << client->totalReceivedPackets << std::endl;
-	out_file << "upstreamLoss, 3.75" << std::endl;
+	out_file << "upstreamLoss, 10" << std::endl;
 	out_file << "upstreamLatency, 10" << std::endl;
 	out_file << "upstreamDeviation, 8" << std::endl;
-	out_file << "downstreamLoss, 3.75" << std::endl;
+	out_file << "downstreamLoss, 10" << std::endl;
 	out_file << "downstreamLatency, 10" << std::endl;
 	out_file << "downstreamDeviation, 8" << std::endl;
 	out_file << "timeStamp, " << (size_t)timeGetTime() << std::endl;

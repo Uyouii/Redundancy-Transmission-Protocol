@@ -25,7 +25,6 @@ void * mrtp_list_remove(MRtpListIterator position) {
 	return position;
 }
 
-// 把first和last之间的节点移动到position后
 MRtpListIterator mrtp_list_move(MRtpListIterator position, void * dataFirst, void * dataLast) {
 
 	MRtpListIterator first = (MRtpListIterator)dataFirst,
