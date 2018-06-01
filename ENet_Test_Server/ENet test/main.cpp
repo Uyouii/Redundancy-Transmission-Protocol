@@ -11,7 +11,7 @@ ENetHost* createServer() {
 	ENetHost * server;
 
 	enet_address_set_host(&address, HOSTADDRESS);
-	address.port = 1234;
+	address.port = 1235;
 
 	server = enet_host_create(
 		&address /* the address to bind the server host to */,

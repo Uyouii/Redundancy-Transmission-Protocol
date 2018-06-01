@@ -205,12 +205,12 @@ int main() {
 	out_file << "totalReceiveData, " << totalReceiveData << std::endl;
 	out_file << "totalSendUdpPacket, " << totalSendPacket << std::endl;
 	out_file << "totalReceiveUdpPacket, " << totalReceivePacket << std::endl;
-	out_file << "upstreamLoss, 10" << std::endl;
-	out_file << "upstreamLatency, 10" << std::endl;
-	out_file << "upstreamDeviation, 8" << std::endl;
-	out_file << "downstreamLoss, 10" << std::endl;
-	out_file << "downstreamLatency, 10" << std::endl;
-	out_file << "downstreamDeviation, 8" << std::endl;
+	out_file << "upstreamLoss, 6.25" << std::endl;
+	out_file << "upstreamLatency, 20" << std::endl;
+	out_file << "upstreamDeviation, 10" << std::endl;
+	out_file << "downstreamLoss, 6.25" << std::endl;
+	out_file << "downstreamLatency, 20" << std::endl;
+	out_file << "downstreamDeviation, 10" << std::endl;
 	out_file << "timeStamp, " << (size_t)timeGetTime() << std::endl;
 	out_file << "sendSlap, " << sendSlap << std::endl;
 	for (int i = 0; i < rttData.size(); i++) {

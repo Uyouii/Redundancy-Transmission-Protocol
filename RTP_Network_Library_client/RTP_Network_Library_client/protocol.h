@@ -8,7 +8,7 @@ enum {
 	MRTP_PROTOCOL_MAXIMUM_MTU = 4096,
 	MRTP_PROTOCOL_MAXIMUM_PACKET_COMMANDS = 64,
 	MRTP_PROTOCOL_MINIMUM_WINDOW_SIZE = 4096,
-	MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE = 65536,
+	MRTP_PROTOCOL_MAXIMUM_WINDOW_SIZE = 1024 * 1024,
 	MRTP_PROTOCOL_MAXIMUM_PEER_ID = 0xFFF,
 	MRTP_PROTOCOL_MAXIMUM_FRAGMENT_COUNT = 1024 * 1024,
 
@@ -142,10 +142,10 @@ typedef struct _MRtpProtocolPing {
 	MRtpProtocolCommandHeader header;
 } MRTP_PACKED MRtpProtocolPing;
 
-typedef struct _MRtpProtocolSendReliable {
+typedef struct _MRtpProtocolSend {
 	MRtpProtocolCommandHeader header;
 	mrtp_uint16 dataLength;
-} MRTP_PACKED MRtpProtocolSendReliable;
+} MRTP_PACKED MRtpProtocolSend;
 
 typedef struct _MRtpProtocolSendFragment {
 	MRtpProtocolCommandHeader header;
@@ -156,36 +156,6 @@ typedef struct _MRtpProtocolSendFragment {
 	mrtp_uint32 totalLength;
 	mrtp_uint32 fragmentOffset;
 } MRTP_PACKED MRtpProtocolSendFragment;
-
-typedef struct _MRtpProtocolSendRedundancy {
-	MRtpProtocolCommandHeader header;
-	mrtp_uint16 dataLength;
-} MRTP_PACKED MRtpProtocolSendRedundancy;
-
-typedef struct _MRtpProtocolSendRedundancyFragment {
-	MRtpProtocolCommandHeader header;
-	mrtp_uint16 startSequenceNumber;
-	mrtp_uint16 dataLength;
-	mrtp_uint32 fragmentCount;
-	mrtp_uint32 fragmentNumber;
-	mrtp_uint32 totalLength;
-	mrtp_uint32 fragmentOffset;
-} MRTP_PACKED MRtpProtocolSendRedundancyFragment;
-
-typedef struct _MRtpProtocolSendRedundancyNoAck {
-	MRtpProtocolCommandHeader header;
-	mrtp_uint16 datalength;
-} MRTP_PACKED MRtpProtocolSendRedundancyNoAck;
-
-typedef struct _MRtpProtocolSendRedundancyFragementNoAck {
-	MRtpProtocolCommandHeader header;
-	mrtp_uint16 startSequenceNumber;
-	mrtp_uint16 dataLength;
-	mrtp_uint32 fragmentCount;
-	mrtp_uint32 fragmentNumber;
-	mrtp_uint32 totalLength;
-	mrtp_uint32 fragmentOffset;
-} MRTP_PACKED MRtpProtocolSendRedundancyFragementNoAck;
 
 typedef struct _MRtpProtocolRedundancyAcknowledge {
 	MRtpProtocolCommandHeader header;
@@ -201,16 +171,6 @@ typedef struct _MRtpProtocolSendUnsequenced
 	mrtp_uint16 dataLength;
 } MRTP_PACKED MRtpProtocolSendUnsequenced;
 
-typedef struct _MRtpProtocolSendUnsequencedFragment {
-	MRtpProtocolCommandHeader header;
-	mrtp_uint16 startSequenceNumber;
-	mrtp_uint16 dataLength;
-	mrtp_uint32 fragmentCount;
-	mrtp_uint32 fragmentNumber;
-	mrtp_uint32 totalLength;
-	mrtp_uint32 fragmentOffset;
-} MRTP_PACKED MRtpProtocolSendUnsequencedFragment;
-
 typedef union _MRtpProtocol {
 	MRtpProtocolCommandHeader header;
 	MRtpProtocolAcknowledge acknowledge;
@@ -218,17 +178,12 @@ typedef union _MRtpProtocol {
 	MRtpProtocolVerifyConnect verifyConnect;
 	MRtpProtocolDisconnect disconnect;
 	MRtpProtocolPing ping;
-	MRtpProtocolSendReliable sendReliable;
+	MRtpProtocolSend send;
 	MRtpProtocolSendFragment sendFragment;
 	MRtpProtocolBandwidthLimit bandwidthLimit;
 	MRtpProtocolThrottleConfigure throttleConfigure;
-	MRtpProtocolSendRedundancyNoAck sendRedundancyNoAck;
-	MRtpProtocolSendRedundancyFragementNoAck sendRedundancyFragementNoAck;
-	MRtpProtocolSendRedundancy sendRedundancy;
-	MRtpProtocolSendRedundancyFragment sendRedundancyFragment;
 	MRtpProtocolRedundancyAcknowledge redundancyAcknowledge;
 	MRtpProtocolSendUnsequenced sendUnsequenced;
-	MRtpProtocolSendUnsequencedFragment sendUnsequencedFragment;
 } MRTP_PACKED MRtpProtocol;
 
 #ifdef _MSC_VER

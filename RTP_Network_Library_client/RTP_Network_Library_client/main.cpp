@@ -10,13 +10,13 @@
 #include<vector>
 
 //#define SERVERADDRESS "10.240.66.57"
-#define SERVERADDRESS "192.168.31.233"
+//#define SERVERADDRESS "192.168.31.233"
 //#define SERVERADDRESS "192.168.1.6"
 //#define SERVERADDRESS "192.168.31.108"
 //#define SERVERADDRESS "10.242.3.221"
-//#define SERVERADDRESS "127.0.0.1"
+#define SERVERADDRESS "127.0.0.1"
 #define GENERATECSVFILE
-#define PACKETSTYLE MRTP_PACKET_FLAG_RELIABLE
+
 
 MRtpHost* createClient() {
 	MRtpHost * client;
@@ -76,6 +76,9 @@ int main(int argc, char ** argv) {
 		rttData[i - 1][0] = i;
 	}
 #endif // GENERATECSVFILE
+//#define PACKETSTYLE MRTP_PACKET_FLAG_REDUNDANCY
+#define PACKETSTYLE MRTP_PACKET_FLAG_RELIABLE
+//#define PACKETSTYLE MRTP_PACKET_FLAG_UNSEQUENCED
 
 	while (true) {
 
@@ -96,6 +99,7 @@ int main(int argc, char ** argv) {
 			case MRTP_EVENT_TYPE_CONNECT:
 				printf("connect to server %x:%u.\n", event.peer->address.host, event.peer->address.port);
 				hasconnected = true;
+				slap += 1000;
 				break;
 			case MRTP_EVENT_TYPE_DISCONNECT:
 				printf("Disconnection succeeded.\n");
@@ -147,12 +151,12 @@ int main(int argc, char ** argv) {
 	out_file << "totalReceiveData, " << client->totalReceivedData << std::endl;
 	out_file << "totalSendUdpPacket, " << client->totalSentPackets << std::endl;
 	out_file << "totalReceiveUdpPacket, " << client->totalReceivedPackets << std::endl;
-	out_file << "upstreamLoss, 10" << std::endl;
-	out_file << "upstreamLatency, 10" << std::endl;
-	out_file << "upstreamDeviation, 8" << std::endl;
-	out_file << "downstreamLoss, 10" << std::endl;
-	out_file << "downstreamLatency, 10" << std::endl;
-	out_file << "downstreamDeviation, 8" << std::endl;
+	out_file << "upstreamLoss, 6.25" << std::endl;
+	out_file << "upstreamLatency, 20" << std::endl;
+	out_file << "upstreamDeviation, 10" << std::endl;
+	out_file << "downstreamLoss, 6.25" << std::endl;
+	out_file << "downstreamLatency, 20" << std::endl;
+	out_file << "downstreamDeviation, 10" << std::endl;
 	out_file << "timeStamp, " << (size_t)timeGetTime() << std::endl;
 	out_file << "sendSlap, " << sendSlap << std::endl;
 	std::string packetStyle;

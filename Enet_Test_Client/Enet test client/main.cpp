@@ -48,7 +48,7 @@ int main(int argc, char ** argv) {
 
 	/* Connect to some.server.net:1234. */
 	enet_address_set_host(&address, SERVERADDRESS);
-	address.port = 1234;
+	address.port = 1235;
 
 	/* Initiate the connection, allocating the two channels 0 and 1. */
 	peer = enet_host_connect(client, &address, 2, 0);
@@ -150,12 +150,12 @@ int main(int argc, char ** argv) {
 	out_file << "totalReceiveData, " << client->totalReceivedData << std::endl;
 	out_file << "totalSendUdpPacket, " << client->totalSentPackets << std::endl;
 	out_file << "totalReceiveUdpPacket, " << client->totalReceivedPackets << std::endl;
-	out_file << "upstreamLoss, 10" << std::endl;
-	out_file << "upstreamLatency, 10" << std::endl;
-	out_file << "upstreamDeviation, 8" << std::endl;
-	out_file << "downstreamLoss, 10" << std::endl;
-	out_file << "downstreamLatency, 10" << std::endl;
-	out_file << "downstreamDeviation, 8" << std::endl;
+	out_file << "upstreamLoss, 6.25" << std::endl;
+	out_file << "upstreamLatency, 20" << std::endl;
+	out_file << "upstreamDeviation, 10" << std::endl;
+	out_file << "downstreamLoss, 6.25" << std::endl;
+	out_file << "downstreamLatency, 20" << std::endl;
+	out_file << "downstreamDeviation, 10" << std::endl;
 	out_file << "timeStamp, " << (size_t)timeGetTime() << std::endl;
 	out_file << "sendSlap, " << sendSlap << std::endl;
 	for (int i = 0; i < rttData.size(); i++) {
