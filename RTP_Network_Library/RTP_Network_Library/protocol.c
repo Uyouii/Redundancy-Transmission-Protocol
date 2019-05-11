@@ -24,7 +24,7 @@ static size_t commandSizes[MRTP_PROTOCOL_COMMAND_COUNT] = {
 	sizeof(MRtpProtocolSendFragment),					// 13
 	sizeof(MRtpProtocolRedundancyAcknowledge),			// 14
 	sizeof(MRtpProtocolSendUnsequenced),				// 15
-	sizeof(MRtpProtocolSendFragment),		// 16
+	sizeof(MRtpProtocolSendFragment),					// 16
 };
 
 mrtp_uint8 channelIDs[] = {

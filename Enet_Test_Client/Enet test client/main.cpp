@@ -62,7 +62,7 @@ int main(int argc, char ** argv) {
 
 	bool disconnected = false;
 	bool hasconnected = false;
-	const int TOTALPACKET = 1000;
+	const int TOTALPACKET = 200;
 	const int PACKELENGTH = 80;
 	const int sendSlap = 30;
 	enet_uint32 packetNum = 1;

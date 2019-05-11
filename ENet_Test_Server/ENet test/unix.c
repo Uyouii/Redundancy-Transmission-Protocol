@@ -1,4 +1,4 @@
-/** 
+﻿/** 
  @file  unix.c
  @brief ENet Unix system specific functions
 */
@@ -538,6 +538,7 @@ enet_socket_wait (ENetSocket socket, enet_uint32 * condition, enet_uint32 timeou
         return -1;
     }
 
+	// 这里重置了
     * condition = ENET_SOCKET_WAIT_NONE;
 
     if (selectCount == 0)
