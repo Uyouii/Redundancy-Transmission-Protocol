@@ -1,19 +1,3 @@
-# Redundant-Transmission-Protocol
-
-- `ENet_Test_Server`和`Enet_Test_Client`是对Enet进行的收发数据测试项目
-- `KCP_Test_Client`和`KCP_Test_Server`是对KCP进行收发数据的测是项目
-- `RTP_Network_library`和 `RTP_Network_Library_client`是基于Enet实现的冗余机制的网络库收发数据的测试项目
-- `TCP_Test_Client`和`TCP_Test_Server`是对TCP收发数据的测试项目
-- `NetworkTest`是一个将之前测试的数据在浏览器页面可视化展示出来的项目，需要先安装和配置 mongo_db
-
-
-
-**源码分析与阅读**：
-
-- **Enet源码分析**: 
-- **KCP源码分析**：
-- **冗余网络库测试**：
-
 
 
 # Enet源码解析
@@ -114,43 +98,43 @@ typedef struct _ENetHost
 
 
 
-|内部变量                         | 作用 |
-| -------- | ---- |
-|**socket**                      | 用于数据传输和连接的UDP套接字句柄 |
-|**address**                     | host的socket地址|
-|**incomingBandwidth**           | host接收数据的带宽，即download bandwidth|
-|**outgoingBandwidth**           | host上传数据的带宽，即upstream bandwidth |
-|**bandwidthThrottleEpoch**      | 记录host流量控制的时间戳，如果流量控制的时间间隔超过`bandwidthThrottleEpoch`，则进行流量控制。host流量控制时间间隔设置为1000ms。 |
-|**mtu**                         | 即最大传输单元，当需要发送的单个packet的大小超过该值时会进行分片操作 |
-|**randomSeed**                  | 用于生成connectID的随机数种子 |
-|**recalculateBandwidthLimits**  | 用于记录是否需要重新计算带宽的标记变量，当有peer连接或者断开连接时会被置为1|
-| **peers**                      | host中用于储存peer的数组，在host初始化时设置，大小为`peerCount`。|
-| **peerCount**                  | 创建host时指定的peerCount，即最大的peer数。如果此时的peer数为`peerCount`，则在发起连接或者被动连接（收到connect command）时会失败，没有空间容纳新的peer。|
-| **channelLimit**               | 每个peer中可以容纳的channel数，最大为255，最小为1。|
-| **serviceTime**                | 标记host当前时间的时间戳|
-| **dispatchQueue**              | 待处理的peer队列。当peer中有event产生时，则将peer放入dispatchQueue中。|
-|**continueSending**            | 用于标记peer中的数据是否发送完的变量。在发送peer中的数据时为保证公平性，则对peer进行轮询发送，每次至多发送一个数据量小于mtu udp数据报，如果peer中数据没有发送完，则将该变量置为1，在下次循环继续发送。|
-| **packetSize**                 | 用于标记当前待发送的udp数据报中数据的大小，在添加数据前如果`packetSize`大小大于mtu，则将`continueSending`置为1，跳出循环，将当前数据发送出去，等待下次循环中发送剩余数据。|
-| **headerFlags**                | 标记发送特性的一些flag，例如是否发送当前时间，是否需要压缩等。`host->headerFlags`会携带到发送数据报的头部中发送到peer端。|
-| **commands**                   | 用于储存当前待发送udp数据报中的command|
-| **commandCount**               | 记录当前待发送udp数据报中的command的数量，如果需要发送的command的数量大于`ENET_PROTOCOL_MAXIMUM_PACKET_COMMANDS`，则将当前数据报发送出去，剩余数据等待下次循环发送。|
-| **buffers**                    | 储存需要发送数据的buffer，用于传递给socket接口发送数据|
-| **bufferCount**                | 记录buffers中buffer的个数，同样传递给相应socke接口用于数据发送。最大值为`ENET_BUFFER_MAXIMUM`，如果buffers中buffer的个数大于该值，则先将当前数据报发送出去，剩余数据等待下次循环发送。|
-| **checksum**                   | 计算校验和的回调函数，需要用户自己设置 |
-| **compressor**                 | 用于压缩和解压的结构变量，需要用户自己设置|
-| **packetData**                 | 一个二维数组，其中packetData[0]用于储存接收的数据，packetData[1]用于储存压缩后待发送的数据|
-| **receivedAddress**            | 接收数据的socket地址，host和port都设为0则意味接收任意地址的数据|
-| **receivedData**               | 用于标记当前读取到packetData[0]中位置的指针|
-| **receivedDataLength**         | 当前接收的数据的长度|
-| **totalSentData**              | host发送出的总的数据量|
-| **totalSentPackets**           | host发送出的总的udp数据报数|
-| **totalReceivedData**          | host接收的总的数据量|
-| **totalReceivedPackets**       | host接收的总的udp数据报数|
-| **connectedPeers**             | 当前连接的peer的数量|
-| **bandwidthLimitedPeers**      | 需要进行流量控制的peer的数量|
-|  **duplicatePeers**             | 允许重复的ip的最大的peer的数量，默认值为`ENET_PROTOCOL_MAXIMUM_PEER_ID` |
-| **maximumPacketSize**          | 允许一个单个的`ENetPacket`发送和接收的最大的数据量|
-| **maximumWaitingData**         | 允许等待在buffer中的最大的数据量|
+| 内部变量                       | 作用                                                         |
+| ------------------------------ | ------------------------------------------------------------ |
+| **socket**                     | 用于数据传输和连接的UDP套接字句柄                            |
+| **address**                    | host的socket地址                                             |
+| **incomingBandwidth**          | host接收数据的带宽，即download bandwidth                     |
+| **outgoingBandwidth**          | host上传数据的带宽，即upstream bandwidth                     |
+| **bandwidthThrottleEpoch**     | 记录host流量控制的时间戳，如果流量控制的时间间隔超过`bandwidthThrottleEpoch`，则进行流量控制。host流量控制时间间隔设置为1000ms。 |
+| **mtu**                        | 即最大传输单元，当需要发送的单个packet的大小超过该值时会进行分片操作 |
+| **randomSeed**                 | 用于生成connectID的随机数种子                                |
+| **recalculateBandwidthLimits** | 用于记录是否需要重新计算带宽的标记变量，当有peer连接或者断开连接时会被置为1 |
+| **peers**                      | host中用于储存peer的数组，在host初始化时设置，大小为`peerCount`。 |
+| **peerCount**                  | 创建host时指定的peerCount，即最大的peer数。如果此时的peer数为`peerCount`，则在发起连接或者被动连接（收到connect command）时会失败，没有空间容纳新的peer。 |
+| **channelLimit**               | 每个peer中可以容纳的channel数，最大为255，最小为1。          |
+| **serviceTime**                | 标记host当前时间的时间戳                                     |
+| **dispatchQueue**              | 待处理的peer队列。当peer中有event产生时，则将peer放入dispatchQueue中。 |
+| **continueSending**            | 用于标记peer中的数据是否发送完的变量。在发送peer中的数据时为保证公平性，则对peer进行轮询发送，每次至多发送一个数据量小于mtu udp数据报，如果peer中数据没有发送完，则将该变量置为1，在下次循环继续发送。 |
+| **packetSize**                 | 用于标记当前待发送的udp数据报中数据的大小，在添加数据前如果`packetSize`大小大于mtu，则将`continueSending`置为1，跳出循环，将当前数据发送出去，等待下次循环中发送剩余数据。 |
+| **headerFlags**                | 标记发送特性的一些flag，例如是否发送当前时间，是否需要压缩等。`host->headerFlags`会携带到发送数据报的头部中发送到peer端。 |
+| **commands**                   | 用于储存当前待发送udp数据报中的command                       |
+| **commandCount**               | 记录当前待发送udp数据报中的command的数量，如果需要发送的command的数量大于`ENET_PROTOCOL_MAXIMUM_PACKET_COMMANDS`，则将当前数据报发送出去，剩余数据等待下次循环发送。 |
+| **buffers**                    | 储存需要发送数据的buffer，用于传递给socket接口发送数据       |
+| **bufferCount**                | 记录buffers中buffer的个数，同样传递给相应socke接口用于数据发送。最大值为`ENET_BUFFER_MAXIMUM`，如果buffers中buffer的个数大于该值，则先将当前数据报发送出去，剩余数据等待下次循环发送。 |
+| **checksum**                   | 计算校验和的回调函数，需要用户自己设置                       |
+| **compressor**                 | 用于压缩和解压的结构变量，需要用户自己设置                   |
+| **packetData**                 | 一个二维数组，其中packetData[0]用于储存接收的数据，packetData[1]用于储存压缩后待发送的数据 |
+| **receivedAddress**            | 接收数据的socket地址，host和port都设为0则意味接收任意地址的数据 |
+| **receivedData**               | 用于标记当前读取到packetData[0]中位置的指针                  |
+| **receivedDataLength**         | 当前接收的数据的长度                                         |
+| **totalSentData**              | host发送出的总的数据量                                       |
+| **totalSentPackets**           | host发送出的总的udp数据报数                                  |
+| **totalReceivedData**          | host接收的总的数据量                                         |
+| **totalReceivedPackets**       | host接收的总的udp数据报数                                    |
+| **connectedPeers**             | 当前连接的peer的数量                                         |
+| **bandwidthLimitedPeers**      | 需要进行流量控制的peer的数量                                 |
+| **duplicatePeers**             | 允许重复的ip的最大的peer的数量，默认值为`ENET_PROTOCOL_MAXIMUM_PEER_ID` |
+| **maximumPacketSize**          | 允许一个单个的`ENetPacket`发送和接收的最大的数据量           |
+| **maximumWaitingData**         | 允许等待在buffer中的最大的数据量                             |
 
 
 ## ENetPeer
@@ -224,7 +208,7 @@ typedef struct _ENetPeer
 ```
 
 | 内部变量                           | 作用                                                         |
-| ---------------------------------- | :----- |
+| ---------------------------------- | :----------------------------------------------------------- |
 | **dispatchList**                   | 在host中的`dispatchQueue`的链表节点。每当该peer产生一个event时，便将peer放入 `host->disptachQueue`中 |
 | **host**                           | peer所在的host的指针                                         |
 | **outgoingPeerID**                 | 对端`host->peers`中的peer的index                             |
@@ -302,16 +286,16 @@ typedef struct _ENetChannel
 } ENetChannel;
 ```
 
-|内部变量                             | 作用|
-|:----------------------            |:-------------------------------|
-|**outgoingReliableSequenceNumber**  | channel中当前发送的可靠包的序号|
-|**outgoingUnreliableSequenceNumber**| channel中当前发送的不可靠包的序号|
-|**usedReliableWindows**             | 用位图的方式记录已经使用的发送窗口的序号|
-|**reliableWindows**                 | 每个发送窗口中已经发送但是还没有收到ack的指令的个数|
-|**incomingReliableSequenceNumber**  | 已经收到的可靠包的序号|
-|**incomingUnreliableSequenceNumber**| 已经收到的不可靠包的序号|
-|**incomingReliableCommands**        | 已经收到的reliable数据包，等待有序排序后转到`peer->dispatchedCommands`队列中|
-|**incomingUnreliableCommands**      | 已经收到的unreliable的数据包，等待转到`peer->dispatchedCommands`队列中|
+| 内部变量                             | 作用                                                         |
+| :----------------------------------- | :----------------------------------------------------------- |
+| **outgoingReliableSequenceNumber**   | channel中当前发送的可靠包的序号                              |
+| **outgoingUnreliableSequenceNumber** | channel中当前发送的不可靠包的序号                            |
+| **usedReliableWindows**              | 用位图的方式记录已经使用的发送窗口的序号                     |
+| **reliableWindows**                  | 每个发送窗口中已经发送但是还没有收到ack的指令的个数          |
+| **incomingReliableSequenceNumber**   | 已经收到的可靠包的序号                                       |
+| **incomingUnreliableSequenceNumber** | 已经收到的不可靠包的序号                                     |
+| **incomingReliableCommands**         | 已经收到的reliable数据包，等待有序排序后转到`peer->dispatchedCommands`队列中 |
+| **incomingUnreliableCommands**       | 已经收到的unreliable的数据包，等待转到`peer->dispatchedCommands`队列中 |
 
 ### 关于reliableWindow
 
@@ -1242,4 +1226,3 @@ for (peer = host -> peers; peer < & host -> peers [host -> peerCount];  ++ peer)
 如果第一次循环将所有发送能力大于`bandwidthLimit`的peer都设置为`bandwidthLimit`而对于那些发送能力小的则不改变的话，host的`incomingBandwidth`其实是没有使用完的，会造成浪费。
 
 在每次for循环中将发送发送能力小于`bandwidthLimit`的peer剔除之后，重新计算的`bandwidthLimit`会增大，意味着host的`incomingBandwidth`可以承载更多的带宽，低于该值的peer都是不用调节的，这样可以更加充分的利用host的带宽，而不造成浪费。
-
