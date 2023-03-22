@@ -753,7 +753,7 @@ do {
 
 ENet在连接建立过程中同样需要三次握手，并且在建立连接的过程中改变peer的状态。
 
-![ENet Connect](https://note.youdao.com/yws/api/personal/file/61D4208945A14AACBFAC8C8244D5D633?method=download&shareKey=a153c7cc67542b94fd4ca5db0a7a19f5)
+![ENet Connect](../images/61D4208945A14AACBFAC8C8244D5D633.png)
 
 首先两个host建立连接前需要保证peers数组内有空闲的peer(状态为disconnected)。
 
@@ -773,7 +773,7 @@ ENet提供了三种断开连接的方式：disconnect, disconneted now和disconn
 
 ### disconnect
 
-![ENet Disonnect](https://note.youdao.com/yws/api/personal/file/628E534F2D974B4EA989C7A85C1AE7FC?method=download&shareKey=b23593745ca476e3fa5e6744bde76abf)
+![ENet Disonnect](../images/628E534F2D974B4EA989C7A85C1AE7FC.png)
 
 断开连接时，主动断开连接的一方向对端发送disconnect指令，并把状态由`connected`变为`disconnecting`。
 
@@ -795,7 +795,7 @@ disconnect later会首先将该peer的状态改为`disconnect later`。状态为
 
 ### disconnect now
 
-![ENet DisConnectNow](https://note.youdao.com/yws/api/personal/file/D8987E62E0484750BE92D1423E27EF83?method=download&shareKey=bdea1ac300e791babc51ec62feb5c94e)
+![ENet DisConnectNow](../images/D8987E62E0484750BE92D1423E27EF83.png)
 
 与disconnect不同的是，发送方在调用disconnect_now函数之后，会将peer现有队列中的数据和一个unsequenced的disconnect发送给对端，并直接将状态变为`disconnceted`，并且不会dispatch event给用户。
 
